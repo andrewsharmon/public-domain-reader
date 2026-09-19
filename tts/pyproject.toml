@@ -1,0 +1,15 @@
+# The offline speech renderer.
+#
+# Isolated from the system Python entirely: `uv` manages both the interpreter
+# and the dependencies inside tts/.venv, so nothing here touches the macOS
+# Python 3.9 or requires Homebrew.
+[project]
+name = "public-domain-reader-tts"
+version = "0.1.0"
+description = "Offline neural text-to-speech rendering for the Public Domain Reader"
+requires-python = ">=3.10"
+dependencies = [
+    "kokoro-onnx>=0.4.9",
+    "soundfile>=0.12.1",
+    "numpy>=1.26",
+]

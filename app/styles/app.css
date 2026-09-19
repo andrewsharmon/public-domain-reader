@@ -1,3 +1,8 @@
+/* ---------------------------------------------------------------- theming
+   Four themes. `auto` sets no attribute at all and lets the system decide,
+   which is why the dark rules are written twice: once behind the media query
+   for auto, once for an explicit choice. */
+
 :root {
   --bg: #fbfaf7;
   --fg: #23201c;
@@ -5,63 +10,182 @@
   --line: #e2ddd4;
   --accent: #7a4b2a;
   --card: #fff;
+
+  --reading-size: 19px;
+  --reading-leading: 1.65;
+  --reading-measure: 34em;
+  --reading-family: ui-serif, Georgia, "Iowan Old Style", Palatino, serif;
 }
+
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root:not([data-theme]) {
     --bg: #171512; --fg: #e8e3da; --muted: #9a9289;
     --line: #2f2b26; --accent: #d9a273; --card: #1e1b17;
   }
 }
+
+:root[data-theme="dark"] {
+  --bg: #171512; --fg: #e8e3da; --muted: #9a9289;
+  --line: #2f2b26; --accent: #d9a273; --card: #1e1b17;
+}
+
+:root[data-theme="sepia"] {
+  --bg: #f4ecd8; --fg: #3a3128; --muted: #7d7263;
+  --line: #e0d4ba; --accent: #8a5a2b; --card: #faf4e4;
+}
+
 * { box-sizing: border-box; }
+
 body {
   margin: 0;
-  padding: 0 16px 64px;
   background: var(--bg);
   color: var(--fg);
-  font: 16px/1.6 ui-serif, Georgia, serif;
+  font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, sans-serif;
   -webkit-text-size-adjust: 100%;
 }
-header { max-width: 46rem; margin: 0 auto; padding: 32px 0 16px; }
-h1 { font-size: 1.5rem; margin: 0 0 16px; letter-spacing: -0.01em; }
-form { display: flex; gap: 8px; }
-input, button {
-  font: inherit; padding: 10px 14px;
+
+a { color: var(--accent); }
+
+/* ------------------------------------------------------------------ chrome */
+
+#chrome {
+  display: flex; align-items: baseline; gap: 20px; flex-wrap: wrap;
+  padding: 18px 16px; border-bottom: 1px solid var(--line);
+  max-width: 62rem; margin: 0 auto;
+}
+.brand { font-weight: 600; text-decoration: none; color: var(--fg); letter-spacing: -0.01em; }
+#chrome nav { display: flex; gap: 16px; }
+#chrome nav a { text-decoration: none; color: var(--muted); font-size: 0.9rem; }
+#chrome nav a.active { color: var(--accent); }
+
+/* The reader takes over the screen; site chrome would only compete. */
+body.reading #chrome { display: none; }
+
+.page { max-width: 46rem; margin: 0 auto; padding: 28px 16px 80px; }
+.page h1 { font-size: 1.4rem; margin: 0 0 12px; letter-spacing: -0.01em; }
+.status { color: var(--muted); font-size: 0.85rem; margin: 10px 0; }
+
+/* ------------------------------------------------------------------- forms */
+
+input, button, select {
+  font: inherit; padding: 9px 13px;
   border: 1px solid var(--line); border-radius: 8px;
   background: var(--card); color: var(--fg);
 }
-input { flex: 1; min-width: 0; }
-button { background: var(--accent); color: var(--bg); border-color: transparent; cursor: pointer; }
-.status { color: var(--muted); font-size: 0.85rem; }
-main { max-width: 46rem; margin: 0 auto; display: grid; gap: 12px; }
-.book {
-  background: var(--card); border: 1px solid var(--line);
-  border-radius: 10px; padding: 14px 16px;
-}
-.book h2 { font-size: 1rem; margin: 0 0 4px; }
-.book .meta { color: var(--muted); font-size: 0.85rem; margin: 0; }
-.tag {
-  display: inline-block; font-family: ui-sans-serif, system-ui, sans-serif;
-  font-size: 0.7rem; letter-spacing: 0.04em; text-transform: uppercase;
-  color: var(--accent); border: 1px solid var(--line);
-  border-radius: 999px; padding: 1px 8px; margin-right: 6px;
+form { display: flex; gap: 8px; }
+form input { flex: 1; min-width: 0; }
+button { cursor: pointer; }
+form button[type="submit"] { background: var(--accent); color: var(--bg); border-color: transparent; }
+button:disabled { background: var(--line); color: var(--muted); cursor: default; }
+
+.button {
+  display: inline-block; margin-top: 14px; padding: 9px 16px;
+  background: var(--accent); color: var(--bg);
+  border-radius: 8px; text-decoration: none; font-size: 0.9rem;
 }
 
+/* ------------------------------------------------------------------ library */
+
+.empty { max-width: 34rem; margin: 14vh auto; padding: 0 16px; text-align: center; }
+.empty h1 { font-size: 1.3rem; margin: 0 0 6px; }
+
+.shelf { display: grid; gap: 12px; margin-top: 18px; }
+.card {
+  display: block; padding: 16px 18px; text-decoration: none; color: inherit;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+}
+.card:hover { border-color: var(--accent); }
+.card h2 { font-size: 1.05rem; margin: 0 0 4px; font-family: var(--reading-family); }
+.byline { margin: 0 0 8px; color: var(--muted); font-size: 0.88rem; }
+.stats { margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+         color: var(--muted); font-size: 0.78rem; }
+
+/* ----------------------------------------------------------------- discover */
+
+.results { display: grid; gap: 12px; margin-top: 16px; }
+.book { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.book h2 { font-size: 1rem; margin: 0 0 4px; font-family: var(--reading-family); }
+.meta { color: var(--muted); font-size: 0.85rem; margin: 0; }
 .row { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
 .row button { flex: none; padding: 6px 14px; font-size: 0.85rem; }
-.row button:disabled { background: var(--line); color: var(--muted); cursor: default; }
 .note { margin: 8px 0 0; color: var(--muted); font-size: 0.8rem; }
-.note code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.95em; color: var(--fg);
+
+.tag {
+  display: inline-block; font-size: 0.68rem; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--accent); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px;
 }
 
 .sources { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; }
 .source {
-  font-family: ui-sans-serif, system-ui, sans-serif; font-size: 0.72rem;
-  padding: 3px 9px; border-radius: 999px;
-  border: 1px solid var(--line); color: var(--muted); background: var(--card);
-  cursor: default;
+  font-size: 0.72rem; padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--muted); background: var(--card); cursor: default;
 }
 /* A locally mirrored source is the fast path; say so plainly. */
 .source.local { border-color: var(--accent); color: var(--accent); }
 .source.failed { border-color: #b4504a; color: #b4504a; }
+
+/* ------------------------------------------------------------------- reader */
+
+.bar {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.bar .icon { background: none; border: none; color: var(--muted); text-decoration: none;
+             font-size: 0.85rem; padding: 4px 6px; }
+.bar .icon:hover { color: var(--accent); }
+.chapter-title {
+  flex: 1; text-align: center; color: var(--muted); font-size: 0.82rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.bar-actions { display: flex; align-items: center; gap: 6px; }
+.chapters { max-width: 9rem; font-size: 0.8rem; padding: 5px 8px; }
+
+.prose {
+  max-width: var(--reading-measure);
+  margin: 0 auto; padding: 32px 20px 40px;
+  font-family: var(--reading-family);
+  font-size: var(--reading-size);
+  line-height: var(--reading-leading);
+}
+.prose h1 { font-size: 1.35em; margin: 0 0 1.4em; font-weight: 600; letter-spacing: -0.01em; }
+.prose .para { margin: 0 0 1.05em; text-indent: 1.3em; hyphens: auto; }
+.prose .para:first-of-type { text-indent: 0; }
+/* Verse line breaks are the author's, so they are preserved exactly. */
+.prose .verse { margin: 1.4em 0 1.4em 1.5em; color: var(--fg); font-style: italic; text-indent: 0; }
+
+/* Present but unused until the speech engine highlights against it. */
+.sentence.speaking { background: color-mix(in srgb, var(--accent) 18%, transparent); border-radius: 3px; }
+
+.chapter-nav {
+  display: flex; justify-content: space-between; gap: 12px;
+  max-width: var(--reading-measure); margin: 0 auto; padding: 0 20px 60px;
+}
+.chapter-nav button { font-size: 0.85rem; }
+
+.panel {
+  position: sticky; top: 45px; z-index: 4;
+  display: none; grid-gap: 14px;
+  max-width: 30rem; margin: 0 auto; padding: 16px 18px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+}
+.panel.open { display: grid; }
+.control { display: grid; gap: 6px; }
+.control-label {
+  display: flex; justify-content: space-between;
+  font-size: 0.78rem; color: var(--muted); text-transform: lowercase;
+}
+.readout { color: var(--fg); font-variant-numeric: tabular-nums; }
+.control input[type="range"] { width: 100%; accent-color: var(--accent); padding: 0; border: none; background: none; }
+.choices { display: flex; gap: 6px; }
+.choices button {
+  flex: 1; padding: 6px 4px; font-size: 0.78rem; text-transform: capitalize;
+  background: var(--bg);
+}
+.choices button.active { background: var(--accent); color: var(--bg); border-color: transparent; }
+
+@media (max-width: 600px) {
+  .prose { padding: 24px 18px 32px; }
+  .chapters { max-width: 6.5rem; }
+}

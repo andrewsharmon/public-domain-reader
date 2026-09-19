@@ -14,6 +14,7 @@ import path from 'node:path';
 
 import * as cache from './cache.js';
 import * as library from './library.js';
+import { LIBRARY_DIR } from './library.js';
 import * as gutenberg from './sources/gutenberg.js';
 import * as archive from './sources/archive.js';
 import * as wikisource from './sources/wikisource.js';
@@ -41,6 +42,8 @@ const MIME = {
   '.woff2': 'font/woff2',
   '.m4a': 'audio/mp4',
   '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.txt': 'text/plain; charset=utf-8',
 };
 
 const json = (res, status, body) => {
@@ -222,17 +225,29 @@ async function handleSave(req, res) {
 
 async function serveStatic(pathname, res) {
   const rel = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
-  const file = path.join(APP_DIR, rel);
 
-  // Never let a crafted path escape the app directory.
-  if (!file.startsWith(APP_DIR)) {
+  // Saved books are served straight off disk, so the reader fetches the same
+  // book.json an offline render reads. They live under their own URL prefix:
+  // `library/` would collide with the app's own app/library/ module.
+  const inBooks = rel.startsWith('books/');
+  const dir = inBooks ? LIBRARY_DIR : APP_DIR;
+  const file = path.join(dir, inBooks ? rel.slice('books/'.length) : rel);
+
+  // Never let a crafted path escape the directory it belongs to.
+  if (!file.startsWith(dir)) {
     res.writeHead(403).end('forbidden');
     return;
   }
 
   try {
     const body = await readFile(file);
-    res.writeHead(200, { 'content-type': MIME[path.extname(file)] ?? 'application/octet-stream' });
+    res.writeHead(200, {
+      'content-type': MIME[path.extname(file)] ?? 'application/octet-stream',
+      // A saved book is rewritten whenever the pipeline improves and
+      // `npm run reparse` runs, so the browser must revalidate rather than
+      // serve a parse from before the fix.
+      'cache-control': inBooks ? 'no-cache' : 'no-store',
+    });
     res.end(body);
   } catch {
     res.writeHead(404, { 'content-type': MIME['.html'] }).end('<h1>404</h1>');

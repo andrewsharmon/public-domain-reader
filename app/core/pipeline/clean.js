@@ -38,7 +38,11 @@ function normalize(text) {
     .replace(/ /g, ' ')
     // Gutenberg marks italics with underscores; they're noise to a reader and
     // actively harmful to a speech engine, which would try to pronounce them.
-    .replace(/_([^_\n]{1,200}?)_/g, '$1')
+    //
+    // The emphasised span often wraps across the hard line break, so single
+    // newlines have to be allowed inside it -- but not blank lines, which
+    // would let an unmatched underscore swallow whole paragraphs.
+    .replace(/_((?:[^_\n]|\n(?!\n)){1,300}?)_/g, '$1')
     .replace(/[ \t]+$/gm, '')
     .replace(/\n{4,}/g, '\n\n\n');
 }
