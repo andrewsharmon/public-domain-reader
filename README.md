@@ -97,7 +97,56 @@ On top of the engine sits an engine-independent prosody layer we control
 outright: inter-sentence, inter-paragraph and comma pause durations, rate
 ramp-up at chapter starts, and a pronunciation rewrite dictionary.
 
+## The text pipeline
+
+`app/core/pipeline` turns raw archive bytes into the Book structure both other
+prongs address. It is plain ES modules, so the same code runs in the browser
+and in Node during an offline render.
+
+    clean.js      strip each archive's boilerplate, license and OCR debris
+    blocks.js     rejoin hard-wrapped lines into paragraphs, preserve verse
+    chapters.js   find chapter divisions
+    sentences.js  split into sentences
+    index.js      compose into a Book, assign stable sentence ids
+
+Sentences carry stable ids (`c5.b12.s2`) because the speech renderer keys its
+sync map by them and the reader uses them as scroll anchors. They must not
+shift between runs over the same text.
+
+### Why it is built the way it is
+
+Every step is a heuristic -- a plain text book has no markup to rely on -- so
+each one is a response to something real in `tests/pipeline.js`:
+
+- **Sentences.** `Intl.Segmenter` handles the easy cases but breaks on what
+  19th-century prose is made of: courtesy titles, initials, and dialogue. It
+  generates candidates and we merge its bad splits back. Breaking `"Stop!" he
+  cried.` in two is not cosmetic -- it puts a pause in the middle of a spoken
+  sentence.
+- **Verse.** Line breaks are authorial in poetry and incidental in prose, so
+  unwrapping everything would flatten poetry and unwrapping nothing would
+  pause at every line end.
+- **Chapters.** Detection does not try patterns in priority order and take the
+  first that clears a threshold. It scores every candidate set, because the
+  decisive signal is not which pattern matched but that real chapters carve a
+  book into roughly even pieces.
+
+### Known limits
+
+Chapter detection is right on most books and close on the rest. It cannot be
+perfect: an all-capitals line mid-story is structurally identical to a story
+title. Current corpus results -- Frankenstein, Pride and Prejudice, Alice and
+The Yellow Wallpaper exact; Moby-Dick finds 132 of 136; Sherlock Holmes finds
+14 where 12 are wanted (it also catches the numbered sections inside *A
+Scandal in Bohemia*); Dubliners finds 18 where 15 are wanted (it also catches
+newspaper headlines quoted inside the stories).
+
+Because of this the Book carries `detectedBy`, naming the winning pattern, so
+the reader can show what it did and offer a manual override instead of
+pretending to certainty.
+
 ## Status
 
-Scaffold. Search fans out across all three archives and returns normalized
-results; the reader and speech engine are not built yet.
+Prongs 1 and 2's foundation are in. Search fans out across all three archives;
+the pipeline builds a Book from any of them. The reader UI and the speech
+engine are not built yet.
