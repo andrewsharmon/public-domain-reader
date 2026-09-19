@@ -1,20 +1,21 @@
 {
   "name": "default",
   "voice": "af_heart",
-  "speed": 1.0,
+  "speed": 1.5,
   "lang": "en-us",
-
   "_comment_pauses": "Seconds of silence inserted between units. This is the heart of the whole thing: a neural voice run fast slurs sentences together because it treats punctuation as a hint, not a duration. Rendering offline lets us stitch exact silence instead of hoping.",
   "pauses": {
-    "sentence": 0.30,
+    "sentence": 0.3,
     "paragraph": 0.65,
     "verseLine": 0.22,
-    "chapter": 1.40
+    "chapter": 1.4
   },
-
   "_comment_rampUp": "Start each chapter slightly slower and settle into the target speed. Comprehension suffers most in the first few sentences, before you have the voice and the context.",
-  "rampUp": { "enabled": true, "startSpeed": 0.88, "sentences": 3 },
-
+  "rampUp": {
+    "enabled": true,
+    "startSpeed": 0.88,
+    "sentences": 3
+  },
   "_comment_pronunciations": "Applied to the text before synthesis. Archaic spellings, abbreviations and numerals that a modern voice mangles.",
   "pronunciations": {
     "\\bMr\\.": "Mister",
@@ -26,6 +27,6 @@
     "\\bi\\.e\\.": "that is",
     "\\be\\.g\\.": "for example"
   },
-
-  "skipFrontMatter": true
+  "skipFrontMatter": true,
+  "_comment_speed": "Speed is applied at synthesis, not on playback. That matters: the pauses below are absolute seconds inserted between clips, so they do NOT shrink as the voice speeds up. Rendering at 1.0 and playing at 1.5x would compress the pauses by the same 1.5x and undo the tuning."
 }
