@@ -7,3 +7,4 @@ library/
 index/
 tts/.venv/
 tts/models/
+tts/comparisons/
