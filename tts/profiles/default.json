@@ -1,7 +1,7 @@
 {
   "name": "default",
   "voice": "af_heart",
-  "speed": 1.5,
+  "speed": 2.0,
   "lang": "en-us",
   "_comment_pauses": "Seconds of silence inserted between units. This is the heart of the whole thing: a neural voice run fast slurs sentences together because it treats punctuation as a hint, not a duration. Rendering offline lets us stitch exact silence instead of hoping.",
   "pauses": {

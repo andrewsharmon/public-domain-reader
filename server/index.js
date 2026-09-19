@@ -264,6 +264,11 @@ const server = createServer(async (req, res) => {
       return json(res, 200, await library.list());
     }
     if (url.pathname === '/api/sources') return await handleSources(res);
+    if (url.pathname === '/api/renders') {
+      const slug = url.searchParams.get('book');
+      if (!slug) return json(res, 400, { error: 'missing ?book=' });
+      return json(res, 200, await library.renders(slug));
+    }
     await serveStatic(url.pathname, res);
   } catch (err) {
     json(res, 500, { error: err.message });

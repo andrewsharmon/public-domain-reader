@@ -102,3 +102,43 @@ export async function list() {
   }
   return books.sort((a, b) => (b.savedAt ?? '').localeCompare(a.savedAt ?? ''));
 }
+
+/**
+ * Rendered audio available for a book.
+ *
+ * A render is a directory of chapter audio plus the sync map that pairs it
+ * with the text. One book can hold several, because trying a different voice
+ * or speed means rendering again rather than editing anything.
+ */
+export async function renders(slug) {
+  const dir = path.join(LIBRARY_DIR, slug, 'audio');
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return []; // nothing rendered for this book
+  }
+
+  const found = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    try {
+      const sync = JSON.parse(await readFile(path.join(dir, entry.name, 'sync.json'), 'utf8'));
+      found.push({
+        profile: entry.name,
+        voice: sync.voice,
+        speed: sync.speed,
+        effectiveSpeed: sync.effectiveSpeed ?? sync.speed,
+        renderedAt: sync.renderedAt,
+        chapters: (sync.chapters ?? []).map((c) => ({
+          index: c.index,
+          file: c.file,
+          duration: c.duration,
+        })),
+      });
+    } catch {
+      // A directory without a readable sync map isn't a finished render.
+    }
+  }
+  return found;
+}

@@ -43,6 +43,31 @@ VOICES = ROOT / "models" / "voices-v1.0.bin"
 # boundaries keeps the seam somewhere the ear already expects a pause.
 MAX_CHARS = 400
 
+# Kokoro's `speed` parameter is neither linear nor unbounded. It refuses
+# anything above 2.0, and well before that it delivers less than it promises.
+# Measured on this model, af_heart, same passage:
+#
+#     requested   1.00  1.25  1.50  1.75  2.00
+#     actual      1.00  1.14  1.52  1.63  1.76
+#
+# So a book rendered at "2.0" really reads at about 1.76x. The player closes
+# the gap with playbackRate, which is why the manifest records what the
+# synthesis actually achieved rather than what was asked for.
+SPEED_CURVE = {1.0: 1.00, 1.25: 1.14, 1.5: 1.52, 1.75: 1.63, 2.0: 1.76}
+
+
+def effective_speed(requested: float) -> float:
+    """What `requested` actually delivers, interpolating between measurements."""
+    points = sorted(SPEED_CURVE.items())
+    if requested <= points[0][0]:
+        return points[0][1]
+    if requested >= points[-1][0]:
+        return points[-1][1]
+    for (x0, y0), (x1, y1) in zip(points, points[1:]):
+        if x0 <= requested <= x1:
+            return y0 + (y1 - y0) * (requested - x0) / (x1 - x0)
+    return requested
+
 
 def load_profile(name: str) -> dict:
     path = ROOT / "profiles" / f"{name}.json"
@@ -267,13 +292,19 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"{book.get('title', args.book)}")
-    print(f"  voice {voice_label} · speed {profile.get('speed', 1.0)} · profile {args.profile}")
+    actual = effective_speed(float(profile.get("speed", 1.0)))
+    print(f"  voice {voice_label} · speed {profile.get('speed', 1.0)} "
+          f"(~{actual:.2f}x actual) · profile {args.profile}")
     print(f"  {len(chapters)} chapter(s) → {out_dir}\n")
 
+    requested_speed = float(profile.get("speed", 1.0))
     manifest = {
         "profile": args.profile,
         "voice": voice_label,
-        "speed": profile.get("speed", 1.0),
+        "speed": requested_speed,
+        # What the synthesis actually delivers, so the player can make up the
+        # difference with playbackRate instead of guessing.
+        "effectiveSpeed": round(effective_speed(requested_speed), 3),
         "pauses": profile.get("pauses", {}),
         "sampleRate": 24000,
         "renderedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
