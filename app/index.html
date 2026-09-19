@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Public Domain Reader</title>
+<link rel="stylesheet" href="styles/app.css">
+</head>
+<body>
+  <header>
+    <h1>Public Domain Reader</h1>
+    <form id="search">
+      <input name="q" type="search" placeholder="Search for a book or author&hellip;" autocomplete="off" required>
+      <button type="submit">Search</button>
+    </form>
+    <p class="status" id="status">Scaffold &mdash; prong 1 search across Gutenberg, Internet Archive and Wikisource.</p>
+  </header>
+  <main id="results"></main>
+  <script type="module" src="discover/main.js"></script>
+</body>
+</html>
