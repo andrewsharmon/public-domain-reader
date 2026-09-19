@@ -6,7 +6,10 @@
   "description": "Discover, read, and listen to public domain books.",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node --watch server/index.js"
+    "dev": "node --watch server/index.js",
+    "index": "node scripts/build-index.js"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  }
 }

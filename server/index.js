@@ -13,11 +13,20 @@ import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 
 import * as cache from './cache.js';
+import * as library from './library.js';
 import * as gutenberg from './sources/gutenberg.js';
 import * as archive from './sources/archive.js';
 import * as wikisource from './sources/wikisource.js';
 
 const SOURCES = { gutenberg, archive, wikisource };
+
+// These archives are volunteer-run and their latency is erratic -- Gutendex
+// has answered the same query in 0.2s and in 26s minutes apart. Without a
+// deadline one slow archive hangs the whole search, because the fan-out can
+// only finish when its slowest member does.
+const SEARCH_TIMEOUT_MS = 12_000;
+// Downloads are whole books, so they get far longer.
+const FETCH_TIMEOUT_MS = 120_000;
 const PORT = Number(process.env.PORT ?? 8080);
 const APP_DIR = path.join(process.cwd(), 'app');
 
@@ -42,6 +51,22 @@ const json = (res, status, body) => {
 // Fan out across every requested source at once. One archive being down or
 // slow must never take out the whole search, so failures come back as data
 // alongside the results rather than as a rejected request.
+// Which sources exist, and whether each answers from a local mirror or over
+// the network. The UI shows this so a slow search is legible rather than
+// mysterious.
+async function handleSources(res) {
+  const sources = await Promise.all(
+    Object.values(SOURCES).map(async (s) => {
+      try {
+        return { id: s.id, label: s.label, ...(await s.status()) };
+      } catch (err) {
+        return { id: s.id, label: s.label, mode: 'unknown', note: err.message };
+      }
+    }),
+  );
+  json(res, 200, sources);
+}
+
 async function handleSearch(url, res) {
   const query = url.searchParams.get('q')?.trim();
   if (!query) return json(res, 400, { error: 'missing ?q=' });
@@ -52,19 +77,109 @@ async function handleSearch(url, res) {
     .filter((s) => s in SOURCES);
   const limit = Math.min(Number(url.searchParams.get('limit') ?? 20), 50);
 
+  const timings = names.map(() => Date.now());
   const settled = await Promise.allSettled(
-    names.map((n) => SOURCES[n].search(query, { limit })),
+    names.map(async (n, i) => {
+      const value = await SOURCES[n].search(query, {
+        limit,
+        signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+      });
+      timings[i] = Date.now() - timings[i];
+      return value;
+    }),
   );
 
-  const results = [];
-  const errors = [];
-  settled.forEach((r, i) => {
-    if (r.status === 'fulfilled') results.push(...r.value);
-    else errors.push({ source: names[i], message: r.reason?.message ?? String(r.reason) });
+  const status = settled.map((r, i) => {
+    if (r.status === 'fulfilled') {
+      return { source: names[i], ok: true, count: r.value.length, ms: timings[i] };
+    }
+    const timedOut = r.reason?.name === 'TimeoutError' || r.reason?.name === 'AbortError';
+    return {
+      source: names[i],
+      ok: false,
+      timedOut,
+      ms: Date.now() - timings[i],
+      message: timedOut
+        ? `no response within ${SEARCH_TIMEOUT_MS / 1000}s`
+        : r.reason?.message ?? String(r.reason),
+    };
   });
 
-  results.sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0));
-  json(res, 200, { query, count: results.length, results, errors });
+  const results = mergeRanked(settled, names);
+  json(res, 200, {
+    query,
+    count: results.length,
+    results,
+    sources: status,
+    errors: status.filter((s) => !s.ok),
+  });
+}
+
+// Merge results from archives whose scores are not comparable.
+//
+// Raw popularity cannot be sorted across sources: the Internet Archive's
+// download counts dwarf Gutenberg's, so IA items that merely matched a word
+// outranked the actual book. What does compare is each result's *rank within
+// its own source*, weighted by how good that source's text tends to be.
+const SOURCE_QUALITY = {
+  gutenberg: 1.0, // proofread transcriptions, the best text available
+  wikisource: 0.85, // human-transcribed, but structurally awkward
+  archive: 0.55, // OCR of scans: vast, noisy, and full of non-books
+};
+
+function mergeRanked(settled, names) {
+  const merged = [];
+  settled.forEach((r, i) => {
+    if (r.status !== 'fulfilled') return;
+    const weight = SOURCE_QUALITY[names[i]] ?? 0.5;
+    const total = r.value.length || 1;
+    r.value.forEach((book, rank) => {
+      merged.push({ ...book, score: (1 - rank / total) * weight });
+    });
+  });
+  return merged.sort((a, b) => b.score - a.score);
+}
+
+
+
+// Download a book, or return the copy already on disk. Shared by the raw text
+// endpoint and by saving to the library, so a book is never fetched twice.
+async function loadText(source, sourceId) {
+  const hit = await cache.read(source, sourceId);
+  if (hit) return { ...hit, cached: true };
+
+  const payload = await SOURCES[source].fetchText(sourceId, {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  await cache.write(source, sourceId, payload);
+  return { ...payload, cached: false };
+}
+
+// Wikisource navigation pages aren't a failure so much as a question: which
+// edition did you mean? Pass the options through rather than erroring out.
+function sendFetchError(res, err) {
+  if (err.code === 'AMBIGUOUS') {
+    return json(res, 409, { error: err.message, code: err.code, choices: err.choices });
+  }
+  return json(res, 502, { error: err.message });
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 1e6) reject(new Error('request body too large'));
+    });
+    req.on('end', () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch (err) {
+        reject(err);
+      }
+    });
+    req.on('error', reject);
+  });
 }
 
 async function handleText(url, res) {
@@ -73,20 +188,35 @@ async function handleText(url, res) {
   if (!source || !sourceId) return json(res, 400, { error: 'missing ?source= and ?id=' });
   if (!(source in SOURCES)) return json(res, 404, { error: `unknown source: ${source}` });
 
-  const hit = await cache.read(source, sourceId);
-  if (hit) return json(res, 200, { ...hit, cached: true });
+  try {
+    json(res, 200, await loadText(source, sourceId));
+  } catch (err) {
+    sendFetchError(res, err);
+  }
+}
+
+// Save a book to the library as real files on disk.
+async function handleSave(req, res) {
+  let body;
+  try {
+    body = await readBody(req);
+  } catch (err) {
+    return json(res, 400, { error: err.message });
+  }
+
+  const { source, id: sourceId } = body;
+  if (!source || !sourceId) return json(res, 400, { error: 'missing source and id' });
+  if (!(source in SOURCES)) return json(res, 404, { error: `unknown source: ${source}` });
 
   try {
-    const payload = await SOURCES[source].fetchText(sourceId);
-    await cache.write(source, sourceId, payload);
-    json(res, 200, { ...payload, cached: false });
+    const fetched = await loadText(source, sourceId);
+    // Prefer the richer metadata the search result carried, falling back to
+    // whatever the fetch itself reported.
+    const meta = { ...fetched.book, ...body.meta, source, sourceId };
+    const saved = await library.save(fetched.text, meta);
+    json(res, 200, { ok: true, ...saved });
   } catch (err) {
-    // Wikisource navigation pages aren't a failure so much as a question:
-    // which edition did you mean? Pass the options through.
-    if (err.code === 'AMBIGUOUS') {
-      return json(res, 409, { error: err.message, code: err.code, choices: err.choices });
-    }
-    json(res, 502, { error: err.message });
+    sendFetchError(res, err);
   }
 }
 
@@ -114,9 +244,11 @@ const server = createServer(async (req, res) => {
   try {
     if (url.pathname === '/api/search') return await handleSearch(url, res);
     if (url.pathname === '/api/text') return await handleText(url, res);
-    if (url.pathname === '/api/sources') {
-      return json(res, 200, Object.values(SOURCES).map((s) => ({ id: s.id, label: s.label })));
+    if (url.pathname === '/api/library') {
+      if (req.method === 'POST') return await handleSave(req, res);
+      return json(res, 200, await library.list());
     }
+    if (url.pathname === '/api/sources') return await handleSources(res);
     await serveStatic(url.pathname, res);
   } catch (err) {
     json(res, 500, { error: err.message });
@@ -134,5 +266,5 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n  Public Domain Reader\n`);
   console.log(`  Mac      http://localhost:${PORT}`);
   for (const ip of lanAddresses()) console.log(`  iPhone   http://${ip}:${PORT}`);
-  console.log('');
+  console.log(`\n  Saved books land in ${library.LIBRARY_DIR}\n`);
 });

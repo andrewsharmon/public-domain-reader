@@ -136,3 +136,9 @@ export async function fetchText(sourceId, { signal, maxSubpages = 60 } = {}) {
     book: toBook({ title: sourceId }),
   };
 }
+
+// Live query. Wikisource does publish an all-titles dump, but it carries no
+// author or subject metadata, so a local mirror could only match bare titles.
+export async function status() {
+  return { mode: 'remote', note: 'live query — dump has titles only, no metadata' };
+}

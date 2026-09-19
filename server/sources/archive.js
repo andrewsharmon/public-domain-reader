@@ -48,7 +48,9 @@ export async function search(query, { limit = 20, signal } = {}) {
   for (const f of ['identifier', 'title', 'creator', 'year', 'language', 'subject', 'downloads']) {
     params.append('fl[]', f);
   }
-  params.append('sort[]', 'downloads desc');
+  // Deliberately no sort: the Archive's default ordering is by relevance.
+  // Sorting by downloads instead surfaced its most-downloaded items that
+  // merely matched a word -- console manuals outranking the actual book.
 
   const res = await fetch(`${SEARCH}?${params}`, { signal });
   if (!res.ok) throw new Error(`archive search failed: ${res.status}`);
@@ -84,4 +86,10 @@ export async function fetchText(sourceId, { signal } = {}) {
     textUrl: url,
     book: toBook({ ...m, identifier: sourceId, downloads: 0 }),
   };
+}
+
+// Always a live query: the Internet Archive holds tens of millions of items
+// and publishes no catalog dump small enough to mirror.
+export async function status() {
+  return { mode: 'remote', note: 'live query — too large to mirror locally' };
 }

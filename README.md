@@ -20,11 +20,64 @@ maintaining that pipeline three times.
 ## Running it
 
 ```
+npm run index     # once, and whenever you want a fresher catalog
 npm start
 ```
 
 One Node process serves the app *and* proxies the archives, so the browser is
 always same-origin. It binds `0.0.0.0` and prints a LAN URL for the iPhone.
+
+## Saving a book
+
+Search, then press **Save**. The book is downloaded, parsed, and written to
+`library/<author>-<title>-<source><id>/`:
+
+    book.txt    the prose, with boilerplate and OCR debris stripped
+    book.json   the parsed structure, including stable sentence ids
+    meta.json   title, author, source, stats, and how chapters were detected
+
+Saving happens on the server because the server is the Mac. The point is real
+files on disk that an offline TTS render -- or anything else -- can read, not
+a copy trapped in browser storage.
+
+## The local catalog
+
+`npm run index` mirrors the Project Gutenberg catalog, turning search from a
+network round trip into a memory scan: **7-80ms locally against 78,130 books**,
+against seconds over the network, with a 26s worst case observed.
+
+Only Gutenberg is mirrored, because only Gutenberg publishes something worth
+mirroring:
+
+| Source | Mirrored | Why |
+|---|---|---|
+| Project Gutenberg | yes | Full catalog CSV, refreshed daily: 21MB in, 78,130 books out |
+| Wikisource | no | Publishes an all-titles dump, but with no author or subject metadata |
+| Internet Archive | no | Tens of millions of items and no dump to mirror |
+
+The CSV also carries Subjects and Bookshelves that the per-query API never
+returns, which makes browsing by subject possible later.
+
+Indexing then crawls the head of Gutendex's popularity ordering for download
+counts, because the CSV has none -- and without a popularity signal, search
+cannot tell *Alice's Adventures in Wonderland* from *Alice in Wonderland,
+Retold in Words of One Syllable*. The retelling wins on text alone, since it
+contains the query as a literal substring and the real book does not.
+
+The UI shows each source's mode -- local or live -- and, after a search, how
+many results it returned and how long it took. These archives are volunteer
+run and erratic, so a slow search should be legible rather than a spinner that
+might never end. Each source has its own deadline for the same reason: the
+fan-out can otherwise only finish when its slowest member does.
+
+### Ranking across sources
+
+Scores from different archives are not comparable. Sorting by raw popularity
+put the Internet Archive's most-downloaded loose matches -- console manuals,
+newspapers -- above the actual book, because its download counts dwarf
+Gutenberg's. What does compare is each result's rank *within its own source*,
+weighted by how good that source's text tends to be. `tests/search.js` pins
+the queries that have one obvious right answer.
 
 ## Why a server at all
 
@@ -145,8 +198,12 @@ Because of this the Book carries `detectedBy`, naming the winning pattern, so
 the reader can show what it did and offer a manual override instead of
 pretending to certainty.
 
+## Tests
+
+    node tests/pipeline.js    structure, against a corpus of awkward books
+    node tests/search.js      ranking regressions
+
 ## Status
 
-Prongs 1 and 2's foundation are in. Search fans out across all three archives;
-the pipeline builds a Book from any of them. The reader UI and the speech
-engine are not built yet.
+Prong 1 works end to end: search, rank, save to disk. The pipeline builds a
+Book from any source. The reader UI and the speech engine are not built yet.

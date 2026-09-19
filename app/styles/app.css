@@ -45,3 +45,23 @@ main { max-width: 46rem; margin: 0 auto; display: grid; gap: 12px; }
   color: var(--accent); border: 1px solid var(--line);
   border-radius: 999px; padding: 1px 8px; margin-right: 6px;
 }
+
+.row { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
+.row button { flex: none; padding: 6px 14px; font-size: 0.85rem; }
+.row button:disabled { background: var(--line); color: var(--muted); cursor: default; }
+.note { margin: 8px 0 0; color: var(--muted); font-size: 0.8rem; }
+.note code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.95em; color: var(--fg);
+}
+
+.sources { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; }
+.source {
+  font-family: ui-sans-serif, system-ui, sans-serif; font-size: 0.72rem;
+  padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--muted); background: var(--card);
+  cursor: default;
+}
+/* A locally mirrored source is the fast path; say so plainly. */
+.source.local { border-color: var(--accent); color: var(--accent); }
+.source.failed { border-color: #b4504a; color: #b4504a; }
