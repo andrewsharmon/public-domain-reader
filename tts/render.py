@@ -402,6 +402,19 @@ def main() -> None:
     print()
 
     requested_speed = float(profile.get("speed", 1.0))
+    # Rendering a subset must not discard the chapters already done. A book
+    # is rendered over several sessions -- a chapter at a time, or one redone
+    # after a fix -- and overwriting the manifest would silently throw away
+    # hours of finished audio's timings.
+    existing = {}
+    sync_path = out_dir / "sync.json"
+    if sync_path.exists():
+        try:
+            for chapter in json.loads(sync_path.read_text()).get("chapters", []):
+                existing[chapter["index"]] = chapter
+        except (json.JSONDecodeError, KeyError):
+            pass
+
     manifest = {
         "profile": args.profile,
         "voice": voice_label,
@@ -440,21 +453,23 @@ def main() -> None:
         grand_time += elapsed
         print(f"{duration / 60:6.1f} min  in {elapsed / 60:5.1f} min  ({duration / elapsed:.1f}x)")
 
-        manifest["chapters"].append({
+        existing[chapter["index"]] = {
             "index": chapter["index"],
             "title": chapter.get("title"),
             "file": final.name,
             "duration": round(duration, 2),
             "sentences": timings,
-        })
+        }
+        manifest["chapters"] = [existing[k] for k in sorted(existing)]
 
         # Written after every chapter, not once at the end. A whole book takes
         # hours, and there is no reason the chapters already finished should
         # not be playable while the rest renders.
-        (out_dir / "sync.json").write_text(json.dumps(manifest, indent=2))
+        sync_path.write_text(json.dumps(manifest, indent=2))
 
     if not manifest["chapters"]:
-        (out_dir / "sync.json").write_text(json.dumps(manifest, indent=2))
+        manifest["chapters"] = [existing[k] for k in sorted(existing)]
+        sync_path.write_text(json.dumps(manifest, indent=2))
 
     print(f"\n  {grand_audio / 60:.1f} min of audio in {grand_time / 60:.1f} min "
           f"({grand_audio / max(grand_time, 0.001):.1f}x realtime)")
