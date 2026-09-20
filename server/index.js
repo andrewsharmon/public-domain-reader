@@ -13,6 +13,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 
+import { hasContact } from './agent.js';
 import * as cache from './cache.js';
 import * as library from './library.js';
 import { LIBRARY_DIR } from './library.js';
@@ -339,5 +340,11 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n  Public Domain Reader\n`);
   console.log(`  Mac      http://localhost:${PORT}`);
   for (const ip of lanAddresses()) console.log(`  iPhone   http://${ip}:${PORT}`);
-  console.log(`\n  Saved books land in ${library.LIBRARY_DIR}\n`);
+  console.log(`\n  Saved books land in ${library.LIBRARY_DIR}`);
+  if (!hasContact) {
+    // These archives are volunteer-run and Wikimedia's policy allows refusing
+    // requests that carry no means of contact.
+    console.log('  Set PDR_CONTACT (a repo URL or email) to identify yourself to the archives.');
+  }
+  console.log('');
 });

@@ -10,10 +10,16 @@
 // you rather than simply blocking it.
 
 const VERSION = '0.1.0';
-const CONTACT = process.env.PDR_CONTACT
-  ?? 'https://github.com/OWNER/public-domain-reader';
+const CONTACT = process.env.PDR_CONTACT?.trim();
 
-export const USER_AGENT = `PublicDomainReader/${VERSION} (+${CONTACT})`;
+// The contact is appended only when there is one. Inventing a placeholder
+// would be worse than omitting it: an address that reaches nobody looks like
+// accountability without providing any.
+export const USER_AGENT = CONTACT
+  ? `PublicDomainReader/${VERSION} (+${CONTACT})`
+  : `PublicDomainReader/${VERSION}`;
+
+export const hasContact = Boolean(CONTACT);
 
 /** fetch(), identified. Use this for every outbound request to an archive. */
 export function fetchIdentified(url, options = {}) {
