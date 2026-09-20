@@ -8,7 +8,8 @@
     "sentence": 0.3,
     "paragraph": 0.65,
     "verseLine": 0.22,
-    "chapter": 1.4
+    "chapter": 1.4,
+    "sceneBreak": 1.0
   },
   "_comment_rampUp": "Start each chapter slightly slower and settle into the target speed. Comprehension suffers most in the first few sentences, before you have the voice and the context.",
   "rampUp": {

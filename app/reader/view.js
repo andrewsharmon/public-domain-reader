@@ -11,6 +11,7 @@
 
 import { el } from '../core/dom.js';
 import { loadSettings, saveSettings, applySettings, settingsPanel } from './settings.js';
+import { createPlayer, playerBar } from './player.js';
 
 const progressKey = (slug) => `pdr:progress:${slug}`;
 
@@ -19,6 +20,7 @@ let state = null;
 export function unmount() {
   removeEventListener('keydown', onKey);
   document.documentElement.removeAttribute('style');
+  state?.player?.destroy();
   state = null;
 }
 
@@ -62,11 +64,62 @@ export async function mount(root, slug) {
     el('button', { textContent: 'Next →', onclick: () => go(state.chapter + 1) }),
   ]);
 
-  root.append(bar, panel, article, nav);
-  state.el = { article, title, nav, picker };
+  const transport = playerBar({
+    onToggle: () => state.player.toggle(),
+    onStep: (d) => state.player.step(d),
+    onRate: (r) => {
+      state.player.rate = r;
+      renderPlayerStatus({ available: true, playing: state.player.playing });
+    },
+  });
+
+  const player = createPlayer({ slug, article, onStatus: renderPlayerStatus });
+  state.player = player;
+
+  // Tapping a sentence starts the voice there -- the most useful way to move
+  // around a recording, and only possible because the sync map is exact.
+  article.addEventListener('click', (event) => {
+    const span = event.target.closest?.('.sentence');
+    if (span) state.player.seekToSentence(span.dataset.sid);
+  });
+
+  root.append(bar, panel, transport.element, article, nav);
+  state.el = { article, title, nav, picker, transport };
 
   go(state.chapter, { restoreScroll: true });
   addEventListener('keydown', onKey);
+
+  // Discovering the render is not worth blocking the text on.
+  player.load().then(() => bindAudio());
+}
+
+function bindAudio() {
+  if (!state?.player?.render) {
+    renderPlayerStatus({ available: false });
+    return;
+  }
+  state.player.setChapter(state.chapter);
+}
+
+function renderPlayerStatus(status) {
+  const transport = state?.el?.transport;
+  if (!transport) return;
+
+  transport.setPlaying(Boolean(status.playing));
+  transport.setEnabled(Boolean(status.available));
+
+  if (!status.available) {
+    transport.status.textContent = state?.player?.render
+      ? 'this chapter has not been rendered'
+      : 'no audio yet — render it with tts/render.py';
+    return;
+  }
+
+  // Two multipliers stack: the speed baked in at synthesis, and the playback
+  // rate applied on top. What matters to a listener is the product.
+  const render = state.player.render;
+  const total = (render.effectiveSpeed ?? render.speed) * state.player.rate;
+  transport.status.textContent = `${render.voice} · ${total.toFixed(2)}× overall`;
 }
 
 // ------------------------------------------------------------------ rendering
@@ -79,9 +132,14 @@ function go(index, { restoreScroll = false } = {}) {
   const chapter = book.chapters[clamped];
   nodes.title.textContent = chapter.title ?? book.title ?? '';
 
+  // A run of separator rows is one scene break, so only the first is drawn.
+  const blocks = chapter.blocks.filter(
+    (block, i) => block.type !== 'break' || chapter.blocks[i - 1]?.type !== 'break',
+  );
+
   nodes.article.replaceChildren(
     ...(chapter.title ? [el('h1', { textContent: chapter.title })] : []),
-    ...chapter.blocks.map(renderBlock),
+    ...blocks.map(renderBlock),
   );
 
   // Keep the picker in step when navigation came from the arrows or keyboard.
@@ -94,9 +152,14 @@ function go(index, { restoreScroll = false } = {}) {
   const saved = restoreScroll ? readProgress(state.slug)?.scroll ?? 0 : 0;
   scrollTo({ top: saved, behavior: 'instant' });
   writeProgress();
+
+  if (state.player?.render) bindAudio();
 }
 
 function renderBlock(block) {
+  // A scene break is drawn, not typeset.
+  if (block.type === 'break') return el('hr', { className: 'scene-break' });
+
   const node = el('p', { className: block.type === 'verse' ? 'verse' : 'para' });
 
   block.sentences.forEach((sentence, i) => {
@@ -167,4 +230,8 @@ function onKey(event) {
   if (event.target.matches('input, select, textarea')) return;
   if (event.key === 'ArrowRight') go(state.chapter + 1);
   if (event.key === 'ArrowLeft') go(state.chapter - 1);
+  if (event.key === ' ') {
+    event.preventDefault(); // space scrolls by default, which fights playback
+    state.player?.toggle();
+  }
 }

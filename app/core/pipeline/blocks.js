@@ -8,6 +8,11 @@
 
 const BLANK_LINE = /\n\s*\n/;
 
+// Printers mark a scene change with a row of asterisks or a rule. It carries
+// meaning -- time passes -- but it is not language: spoken aloud it becomes
+// "asterisk asterisk asterisk", so it has to be recognised rather than read.
+const SEPARATOR = /^[\s*·•—–\-_=~.]{3,}$/;
+
 function median(numbers) {
   const sorted = [...numbers].sort((a, b) => a - b);
   return sorted[Math.floor(sorted.length / 2)] ?? 0;
@@ -39,7 +44,9 @@ export function toBlocks(text) {
     const lines = chunk.split('\n').filter((l) => l.trim());
     if (!lines.length) continue;
 
-    if (looksLikeVerse(lines)) {
+    if (lines.length === 1 && SEPARATOR.test(lines[0])) {
+      blocks.push({ type: 'break', text: lines[0].trim() });
+    } else if (looksLikeVerse(lines)) {
       blocks.push({ type: 'verse', text: lines.map((l) => l.trim()).join('\n'), lines });
     } else {
       blocks.push({ type: 'para', text: lines.map((l) => l.trim()).join(' ').replace(/\s+/g, ' ') });

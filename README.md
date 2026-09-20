@@ -198,6 +198,22 @@ Because of this the Book carries `detectedBy`, naming the winning pattern, so
 the reader can show what it did and offer a manual override instead of
 pretending to certainty.
 
+## Listening while reading
+
+Render a book (see `tts/README.md`), open it in the reader, and the transport
+appears above the text. The spoken sentence is highlighted as it is read, and
+tapping any sentence jumps the voice there.
+
+Highlighting is a lookup, not an estimate. The audio was synthesized one
+sentence at a time and every clip measured, so `sync.json` holds exact start
+and end times keyed by the same sentence ids the reader renders as spans --
+no dependence on `onboundary` events, which are unreliable on iOS and absent
+for pre-rendered audio anyway.
+
+Two speed multipliers stack: the one baked in at synthesis, and the playback
+rate on top. The transport shows their product, which is the only figure a
+listener cares about.
+
 ## Tests
 
     node tests/pipeline.js    structure, against a corpus of awkward books

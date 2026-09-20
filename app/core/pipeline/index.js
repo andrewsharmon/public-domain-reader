@@ -29,6 +29,10 @@ export function buildBook(rawText, meta) {
     title: chapter.title,
     frontMatter: chapter.frontMatter,
     blocks: chapter.blocks.map((block, b) => {
+      // A scene break has no words to say; it survives as a block so the
+      // reader can draw it and the speech engine can pause on it.
+      if (block.type === 'break') return { type: 'break', sentences: [] };
+
       // Verse is spoken and displayed line by line; its line breaks are
       // authorial, so they must not be re-flowed into sentences.
       const units = block.type === 'verse' ? block.lines.map((l) => l.trim()) : splitSentences(block.text);

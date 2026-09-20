@@ -164,7 +164,24 @@ def iter_units(chapter: dict, skip_front_matter: bool):
         return
 
     blocks = chapter.get("blocks", [])
+    previous_was_break = False
+
     for b, block in enumerate(blocks):
+        # A scene break has no words. It still earns its silence -- that pause
+        # is how a listener hears that time has passed.
+        #
+        # Printers often set one break as several rows of asterisks, so a run
+        # of them is a single break and gets a single pause. The blocks are
+        # kept rather than merged upstream, because merging would shift every
+        # block index after them and invalidate the sentence ids the sync map
+        # is keyed by.
+        if block.get("type") == "break":
+            if not previous_was_break:
+                yield None, None, "sceneBreak"
+            previous_was_break = True
+            continue
+        previous_was_break = False
+
         verse = block.get("type") == "verse"
         sentences = block.get("sentences", [])
         for s, sentence in enumerate(sentences):
@@ -190,6 +207,13 @@ def render_chapter(kokoro, chapter, profile, voice, pronounce, sample_rate=24000
     units = list(iter_units(chapter, profile.get("skipFrontMatter", True)))
 
     for index, (sid, text, kind) in enumerate(units):
+        if sid is None:  # a scene break: silence only
+            gap = float(pauses.get(kind, 0.0))
+            if gap > 0:
+                pieces.append(np.zeros(int(gap * sample_rate), dtype=np.float32))
+                position += gap
+            continue
+
         spoken = pronounce(text)
 
         # Comprehension suffers most in the first few sentences of a chapter,
@@ -341,7 +365,13 @@ def main() -> None:
             "sentences": timings,
         })
 
-    (out_dir / "sync.json").write_text(json.dumps(manifest, indent=2))
+        # Written after every chapter, not once at the end. A whole book takes
+        # hours, and there is no reason the chapters already finished should
+        # not be playable while the rest renders.
+        (out_dir / "sync.json").write_text(json.dumps(manifest, indent=2))
+
+    if not manifest["chapters"]:
+        (out_dir / "sync.json").write_text(json.dumps(manifest, indent=2))
 
     print(f"\n  {grand_audio / 60:.1f} min of audio in {grand_time / 60:.1f} min "
           f"({grand_audio / max(grand_time, 0.001):.1f}x realtime)")

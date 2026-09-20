@@ -8,7 +8,8 @@
 // It binds 0.0.0.0 so an iPhone on the same Wi-Fi can read from the Mac.
 
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { readFile, stat } from 'node:fs/promises';
 import { networkInterfaces } from 'node:os';
 import path from 'node:path';
 
@@ -223,7 +224,47 @@ async function handleSave(req, res) {
   }
 }
 
-async function serveStatic(pathname, res) {
+// Byte-range support, which audio needs and ordinary page assets do not.
+//
+// Without it a browser cannot seek: asking for a position it has not buffered
+// gets the whole file from byte zero, and the player snaps back to the start.
+// Tapping a sentence to jump there is the whole point of the sync map, so this
+// is not optional.
+async function serveRange(req, res, file, size, type) {
+  const match = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '');
+  if (!match) {
+    res.writeHead(200, {
+      'content-type': type,
+      'content-length': size,
+      'accept-ranges': 'bytes',
+      'cache-control': 'no-cache',
+    });
+    createReadStream(file).pipe(res);
+    return;
+  }
+
+  const [, rawStart, rawEnd] = match;
+  const start = rawStart ? Number(rawStart) : 0;
+  const end = rawEnd ? Math.min(Number(rawEnd), size - 1) : size - 1;
+
+  if (start >= size || start > end) {
+    res.writeHead(416, { 'content-range': `bytes */${size}` }).end();
+    return;
+  }
+
+  res.writeHead(206, {
+    'content-type': type,
+    'content-length': end - start + 1,
+    'content-range': `bytes ${start}-${end}/${size}`,
+    'accept-ranges': 'bytes',
+    'cache-control': 'no-cache',
+  });
+  createReadStream(file, { start, end }).pipe(res);
+}
+
+const RANGED = new Set(['.m4a', '.mp3', '.wav']);
+
+async function serveStatic(pathname, res, req) {
   const rel = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
 
   // Saved books are served straight off disk, so the reader fetches the same
@@ -239,10 +280,22 @@ async function serveStatic(pathname, res) {
     return;
   }
 
+  const type = MIME[path.extname(file)] ?? 'application/octet-stream';
+
+  if (RANGED.has(path.extname(file))) {
+    try {
+      const info = await stat(file);
+      return await serveRange(req, res, file, info.size, type);
+    } catch {
+      res.writeHead(404, { 'content-type': MIME['.html'] }).end('<h1>404</h1>');
+      return;
+    }
+  }
+
   try {
     const body = await readFile(file);
     res.writeHead(200, {
-      'content-type': MIME[path.extname(file)] ?? 'application/octet-stream',
+      'content-type': type,
       // A saved book is rewritten whenever the pipeline improves and
       // `npm run reparse` runs, so the browser must revalidate rather than
       // serve a parse from before the fix.
@@ -269,7 +322,7 @@ const server = createServer(async (req, res) => {
       if (!slug) return json(res, 400, { error: 'missing ?book=' });
       return json(res, 200, await library.renders(slug));
     }
-    await serveStatic(url.pathname, res);
+    await serveStatic(url.pathname, res, req);
   } catch (err) {
     json(res, 500, { error: err.message });
   }

@@ -189,3 +189,43 @@ button:disabled { background: var(--line); color: var(--muted); cursor: default;
   .prose { padding: 24px 18px 32px; }
   .chapters { max-width: 6.5rem; }
 }
+
+/* ------------------------------------------------------------------ player */
+
+.player {
+  position: sticky; top: 45px; z-index: 4;
+  display: flex; align-items: center; gap: 8px;
+  max-width: var(--reading-measure); margin: 0 auto;
+  padding: 8px 20px;
+  background: var(--bg);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+.player button {
+  padding: 5px 11px; font-size: 0.85rem; line-height: 1;
+  background: var(--card); color: var(--fg);
+}
+.player .play { min-width: 3rem; background: var(--accent); color: var(--bg); border-color: transparent; }
+.player .play:disabled { background: var(--line); color: var(--muted); }
+.player-status { flex: 1; color: var(--muted); font-size: 0.74rem; text-align: right; }
+.player .rate { padding: 5px 6px; font-size: 0.74rem; }
+
+/* The spoken sentence. A tinted band rather than a block colour, so the text
+   stays readable and the eye can still run ahead of the voice. */
+.sentence.speaking {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-radius: 3px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.sentence { cursor: pointer; }
+
+@media (max-width: 600px) {
+  .player { padding: 8px 18px; }
+  .player-status { font-size: 0.68rem; }
+}
+
+/* A scene break: drawn as the printer meant it, not read aloud. */
+.scene-break {
+  border: none; margin: 2em auto; width: 40%;
+  border-top: 1px solid var(--line);
+}
