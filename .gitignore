@@ -8,3 +8,5 @@ index/
 tts/.venv/
 tts/models/
 tts/comparisons/
+__pycache__/
+*.py[cod]

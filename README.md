@@ -214,6 +214,38 @@ Two speed multipliers stack: the one baked in at synthesis, and the playback
 rate on top. The transport shows their product, which is the only figure a
 listener cares about.
 
+## Using the archives responsibly
+
+Every archive here is volunteer-run and free. This tool identifies itself on
+each request, and you should make that identification point at you:
+
+```
+export PDR_CONTACT="https://github.com/you/your-fork"   # or an email
+```
+
+Wikimedia's User-Agent policy requires a descriptive agent with a means of
+contact and permits refusing requests without one. The others do not demand
+it, but an unidentified client is an unaccountable one -- if this tool
+misbehaves, someone should be able to tell you rather than simply block it.
+
+`npm run index` deliberately fetches at two concurrent requests with backoff
+and spacing. That is not a placeholder to tune up: six concurrent requests
+lost 58 of 100 pages to rate limiting, and the polite version lost none.
+Project Gutenberg also asks that bulk users work from its mirrors rather than
+the main site.
+
+This project is not affiliated with Project Gutenberg, the Internet Archive or
+Wikisource. It strips Project Gutenberg's header and license from the text it
+speaks, because a synthesizer reading a licence aloud helps nobody; the
+underlying works are in the public domain, and the archives are named only to
+say where a book came from.
+
+## License
+
+MIT -- see [LICENSE](LICENSE). This covers the code in this repository only.
+The books are public domain, and the speech model carries its own licence
+(Kokoro is Apache-2.0).
+
 ## Tests
 
     node tests/pipeline.js    structure, against a corpus of awkward books

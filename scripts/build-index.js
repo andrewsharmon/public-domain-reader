@@ -15,6 +15,8 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import { fetchIdentified } from '../server/agent.js';
+
 const CATALOG_URL = 'https://www.gutenberg.org/cache/epub/feeds/pg_catalog.csv';
 const GUTENDEX = 'https://gutendex.com/books';
 
@@ -75,7 +77,7 @@ async function fetchPopularity({ log }) {
         for (let attempt = 0; attempt < RETRIES && !ok; attempt += 1) {
           if (attempt) await sleep(500 * 2 ** attempt); // back off before retrying
           try {
-            const res = await fetch(`${GUTENDEX}?sort=popular&page=${page}`, {
+            const res = await fetchIdentified(`${GUTENDEX}?sort=popular&page=${page}`, {
               signal: AbortSignal.timeout(30_000),
             });
             if (!res.ok) throw new Error(String(res.status));
@@ -101,7 +103,7 @@ async function fetchPopularity({ log }) {
 
 export async function build({ log = console.log, popularity = true } = {}) {
   log(`Downloading ${CATALOG_URL} …`);
-  const res = await fetch(CATALOG_URL);
+  const res = await fetchIdentified(CATALOG_URL);
   if (!res.ok) throw new Error(`catalog download failed: ${res.status}`);
   const csv = await res.text();
   log(`  ${(csv.length / 1e6).toFixed(1)} MB`);

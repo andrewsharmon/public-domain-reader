@@ -5,6 +5,8 @@
 // index page (`Walden/Chapter 1`, ...), so fetching a title can yield a table
 // of contents instead of prose. `fetchText` follows those links one level deep.
 
+import { fetchIdentified } from '../agent.js';
+
 const API = 'https://en.wikisource.org/w/api.php';
 
 export const id = 'wikisource';
@@ -29,7 +31,7 @@ function toBook(raw) {
 
 async function api(params, signal) {
   const qs = new URLSearchParams({ format: 'json', formatversion: '2', ...params });
-  const res = await fetch(`${API}?${qs}`, { signal });
+  const res = await fetchIdentified(`${API}?${qs}`, { signal });
   if (!res.ok) throw new Error(`wikisource api failed: ${res.status}`);
   return res.json();
 }

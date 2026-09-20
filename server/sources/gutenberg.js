@@ -8,6 +8,8 @@
 // Either way the text download has to happen server-side: gutenberg.org sends
 // no CORS header on its text files, so a browser can never fetch them.
 
+import { fetchIdentified } from '../agent.js';
+
 import { readFile } from 'node:fs/promises';
 
 import { GUTENBERG_INDEX } from '../../scripts/build-index.js';
@@ -174,7 +176,7 @@ function fromApi(raw) {
 }
 
 async function searchApi(query, limit, signal) {
-  const res = await fetch(`${API}/books?search=${encodeURIComponent(query)}`, { signal });
+  const res = await fetchIdentified(`${API}/books?search=${encodeURIComponent(query)}`, { signal });
   if (!res.ok) throw new Error(`gutendex search failed: ${res.status}`);
   const data = await res.json();
   return (data.results ?? []).slice(0, limit).map(fromApi);
@@ -190,20 +192,20 @@ export async function fetchText(sourceId, { signal } = {}) {
   // This path is predictable and redirects to whichever encoding exists, so
   // try it before spending a round trip on a catalog lookup.
   const direct = `https://www.gutenberg.org/ebooks/${encodeURIComponent(sourceId)}.txt.utf-8`;
-  const res = await fetch(direct, { signal });
+  const res = await fetchIdentified(direct, { signal });
   if (res.ok) {
     const text = await res.text();
     return { text, textUrl: direct, book: { id: `gutenberg:${sourceId}`, source: id, sourceId } };
   }
 
-  const metaRes = await fetch(`${API}/books/${encodeURIComponent(sourceId)}`, { signal });
+  const metaRes = await fetchIdentified(`${API}/books/${encodeURIComponent(sourceId)}`, { signal });
   if (!metaRes.ok) throw new Error(`gutendex lookup failed: ${metaRes.status}`);
   const meta = await metaRes.json();
 
   const url = plainTextUrl(meta.formats);
   if (!url) throw new Error(`no plain text available for gutenberg:${sourceId}`);
 
-  const textRes = await fetch(url, { signal });
+  const textRes = await fetchIdentified(url, { signal });
   if (!textRes.ok) throw new Error(`gutenberg download failed: ${textRes.status}`);
   return { text: await textRes.text(), book: fromApi(meta), textUrl: url };
 }

@@ -5,6 +5,8 @@
 // Both the search and the download endpoints send CORS `*`, so this adapter
 // would work client-side too -- it runs here only for consistency and caching.
 
+import { fetchIdentified } from '../agent.js';
+
 const SEARCH = 'https://archive.org/advancedsearch.php';
 const META = 'https://archive.org/metadata';
 const DOWNLOAD = 'https://archive.org/download';
@@ -52,7 +54,7 @@ export async function search(query, { limit = 20, signal } = {}) {
   // Sorting by downloads instead surfaced its most-downloaded items that
   // merely matched a word -- console manuals outranking the actual book.
 
-  const res = await fetch(`${SEARCH}?${params}`, { signal });
+  const res = await fetchIdentified(`${SEARCH}?${params}`, { signal });
   if (!res.ok) throw new Error(`archive search failed: ${res.status}`);
   const data = await res.json();
   return (data.response?.docs ?? []).map(toBook);
@@ -69,7 +71,7 @@ function pickTextFile(files = []) {
 }
 
 export async function fetchText(sourceId, { signal } = {}) {
-  const metaRes = await fetch(`${META}/${encodeURIComponent(sourceId)}`, { signal });
+  const metaRes = await fetchIdentified(`${META}/${encodeURIComponent(sourceId)}`, { signal });
   if (!metaRes.ok) throw new Error(`archive lookup failed: ${metaRes.status}`);
   const meta = await metaRes.json();
 
@@ -77,7 +79,7 @@ export async function fetchText(sourceId, { signal } = {}) {
   if (!file) throw new Error(`no plain text available for archive:${sourceId}`);
 
   const url = `${DOWNLOAD}/${encodeURIComponent(sourceId)}/${encodeURIComponent(file.name)}`;
-  const res = await fetch(url, { signal });
+  const res = await fetchIdentified(url, { signal });
   if (!res.ok) throw new Error(`archive download failed: ${res.status}`);
 
   const m = meta.metadata ?? {};
