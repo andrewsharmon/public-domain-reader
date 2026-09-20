@@ -90,6 +90,23 @@ function dropTableOfContents(blocks, headings) {
   return headings;
 }
 
+// Two headings back to back are a title and its subtitle, not two chapters:
+// `BOOK I` directly above `PERSONS OF THE DIALOGUE.` is one division. Merging
+// them has to happen before the empty-chapter check, which would otherwise
+// throw away the real heading because nothing sits between the two.
+//
+// Only pairs merge. A longer run of adjacent headings is a contents list, and
+// that is someone else's job.
+function mergeAdjacent(blocks, headings) {
+  const kept = [];
+  for (let i = 0; i < headings.length; i += 1) {
+    const isPair = headings[i + 1] === headings[i] + 1 && headings[i + 2] !== headings[i] + 2;
+    kept.push(headings[i]);
+    if (isPair) i += 1; // swallow the subtitle
+  }
+  return kept;
+}
+
 // A heading with no prose after it is a quoted headline sitting inside a
 // chapter, not the start of one. This floor is absolute rather than relative
 // to the other chapters, so a genuinely short chapter still survives.
@@ -123,11 +140,22 @@ function score(blocks, headings) {
   return Math.log2(headings.length) * evenness * coverage;
 }
 
+// The heading's own text, plus a subtitle block if one was merged into it.
+function headingTitle(blocks, start, end) {
+  const lines = blocks[start].text.split('\n').map((l) => l.trim()).filter(Boolean);
+  const next = blocks[start + 1];
+  if (next && start + 1 < end && next.type !== 'verse' && !next.text.includes('\n')
+      && next.text.length <= 70 && /^[^a-z]*[A-Z][A-Z][^a-z]*$/.test(next.text)) {
+    lines.push(next.text.trim());
+  }
+  return lines.join(' — ');
+}
+
 export function detectChapters(blocks) {
   let best = { headings: [], score: -Infinity, pattern: null };
 
   for (const pattern of PATTERNS) {
-    const headings = dropEmpty(blocks, dropTableOfContents(blocks, candidates(blocks, pattern)));
+    const headings = dropEmpty(blocks, mergeAdjacent(blocks, dropTableOfContents(blocks, candidates(blocks, pattern))));
     const value = score(blocks, headings);
     if (value > best.score) best = { headings, score: value, pattern: pattern.name };
   }
@@ -148,7 +176,7 @@ export function detectChapters(blocks) {
     chapters.push({
       index: chapters.length,
       // Keep the subtitle when the heading block carried one.
-      title: blocks[start].text.split('\n').map((l) => l.trim()).filter(Boolean).join(' — '),
+      title: headingTitle(blocks, start, end),
       frontMatter: false,
       blocks: blocks.slice(start + 1, end),
     });

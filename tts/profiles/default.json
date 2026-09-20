@@ -29,5 +29,6 @@
     "\\be\\.g\\.": "for example"
   },
   "skipFrontMatter": true,
-  "_comment_speed": "Speed is applied at synthesis, not on playback. That matters: the pauses below are absolute seconds inserted between clips, so they do NOT shrink as the voice speeds up. Rendering at 1.0 and playing at 1.5x would compress the pauses by the same 1.5x and undo the tuning."
+  "_comment_speed": "Speed is applied at synthesis, not on playback. That matters: the pauses below are absolute seconds inserted between clips, so they do NOT shrink as the voice speeds up. Rendering at 1.0 and playing at 1.5x would compress the pauses by the same 1.5x and undo the tuning.",
+  "_comment_skipTitles": "Sections that are reference matter rather than prose. Omit this key to use the built-in list; set it to [] to render everything."
 }

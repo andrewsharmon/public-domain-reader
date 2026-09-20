@@ -22,10 +22,25 @@ That is a 354MB download. Both files are gitignored.
 ## Rendering
 
 ```
+.venv/bin/python render.py --book <slug> --list           # cost first, renders nothing
 .venv/bin/python render.py --book <slug> --preview        # a few sentences, to tune
 .venv/bin/python render.py --book <slug> --chapters 1-3
 .venv/bin/python render.py --book <slug>                  # the whole book
 ```
+
+Run `--list` first. A book is hours of compute, and scholarly editions hide
+surprises -- the Jowett *Republic* opens with a 5.5 hour introduction that is
+the translator's essay rather than Plato, which is 43% of the whole render.
+
+Indexes, footnotes and printer colophons are skipped by default: an index is
+thousands of fragments and hours of synthesis producing something nobody
+would listen to. `--include-reference` overrides that, and a profile can set
+its own `skipTitles`.
+
+A fragment that cannot be synthesized is skipped and reported at the end
+rather than ending the run. This is not hypothetical: a stray `_]` left by a
+footnote in the *Republic*'s index has no phonemes, and it killed a render
+two and a half hours in.
 
 Output lands in `library/<slug>/audio/<profile>/`: one file per chapter, plus
 `sync.json`.

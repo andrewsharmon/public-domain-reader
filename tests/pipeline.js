@@ -20,6 +20,10 @@ export const CORPUS = [
   { id: '2814', source: 'gutenberg', title: 'Dubliners', expect: { chapters: 15 }, note: 'story collection, ALL CAPS titles' },
   { id: '1952', source: 'gutenberg', title: 'The Yellow Wallpaper', expect: { chapters: 1 }, note: 'short story, no divisions, one implicit chapter' },
   { id: '1322', source: 'gutenberg', title: 'Leaves of Grass', expect: {}, note: 'poetry, verse throughout' },
+  // Exposed two real bugs: `BOOK I` sits directly above `PERSONS OF THE
+  // DIALOGUE.` with nothing between, and the index leaves fragments like `_]`
+  // that have no phonemes and killed a multi-hour render.
+  { id: '55201', source: 'gutenberg', title: 'The Republic', expect: { chapters: 14 }, note: 'heading above subheading, index debris' },
 ];
 
 async function load(entry) {

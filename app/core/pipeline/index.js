@@ -16,6 +16,13 @@ import { splitSentences } from './sentences.js';
  */
 const sentenceId = (c, b, s) => `c${c}.b${b}.s${s}`;
 
+// Debris that survives cleaning and reaches the sentence splitter as its own
+// "sentence": a stray bracket from a footnote, a lone ellipsis standing in for
+// omitted text, a rule of punctuation. There is nothing in it to pronounce --
+// a speech engine given `_]` has no phonemes to produce and fails outright --
+// and nothing to read either, so it is not a sentence.
+const hasSpeakableContent = (text) => /[\p{L}\p{N}]/u.test(text);
+
 export function buildBook(rawText, meta) {
   // Chapter detection is heuristic and cannot be right on every book, so the
   // winning pattern travels with the result -- the reader surfaces it and
@@ -39,10 +46,15 @@ export function buildBook(rawText, meta) {
 
       return {
         type: block.type,
-        sentences: units.map((text, s) => {
-          words += text.split(/\s+/).length;
-          return { id: sentenceId(chapter.index, b, s), text };
-        }),
+        // Indices come from the unfiltered list, so dropping unspeakable
+        // debris never shifts the ids of the sentences around it.
+        sentences: units
+          .map((text, s) => ({ id: sentenceId(chapter.index, b, s), text }))
+          .filter((sentence) => {
+            if (!hasSpeakableContent(sentence.text)) return false;
+            words += sentence.text.split(/\s+/).length;
+            return true;
+          }),
       };
     }),
   }));

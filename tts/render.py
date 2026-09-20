@@ -55,6 +55,18 @@ MAX_CHARS = 400
 # synthesis actually achieved rather than what was asked for.
 SPEED_CURVE = {1.0: 1.00, 1.25: 1.14, 1.5: 1.52, 1.75: 1.63, 2.0: 1.76}
 
+# Sections that are reference material rather than prose. An index is
+# thousands of fragments -- names, commas, page numbers -- which is hours of
+# synthesis producing something nobody would ever listen to.
+DEFAULT_SKIP_TITLES = [
+    r"^\s*INDEX\b", r"^\s*FOOTNOTES?\b", r"^\s*BIBLIOGRAPHY\b",
+    r"^\s*CONTENTS\b", r"TRANSCRIBER'?S NOTE", r"PRINTER TO THE UNIVERSITY",
+]
+
+
+def should_skip(title: str, patterns: list[str]) -> bool:
+    return bool(title) and any(re.search(p, title, re.I) for p in patterns)
+
 
 def effective_speed(requested: float) -> float:
     """What `requested` actually delivers, interpolating between measurements."""
@@ -193,8 +205,10 @@ def iter_units(chapter: dict, skip_front_matter: bool):
             yield sentence["id"], sentence["text"], kind
 
 
-def render_chapter(kokoro, chapter, profile, voice, pronounce, sample_rate=24000):
+def render_chapter(kokoro, chapter, profile, voice, pronounce, sample_rate=24000, failures=None):
     """Synthesize one chapter, returning audio and exact sentence timings."""
+    if failures is None:
+        failures = []
     pauses = profile.get("pauses", {})
     ramp = profile.get("rampUp", {})
     base_speed = float(profile.get("speed", 1.0))
@@ -226,12 +240,25 @@ def render_chapter(kokoro, chapter, profile, voice, pronounce, sample_rate=24000
             speed = base_speed * (start + (1 - start) * progress)
 
         start_time = position
+        spoke_something = False
         for part in split_long(spoken):
-            samples, sample_rate = kokoro.create(
-                part, voice=voice, speed=speed, lang=lang
-            )
+            try:
+                samples, sample_rate = kokoro.create(
+                    part, voice=voice, speed=speed, lang=lang
+                )
+            except Exception as err:
+                # A whole book is hours of compute. Losing all of it because
+                # one fragment has no phonemes -- a stray bracket left by a
+                # footnote, say -- is not a tradeoff worth making. Skip the
+                # fragment, count it, and say so at the end.
+                failures.append((sid, part[:60], str(err)[:80]))
+                continue
             pieces.append(samples)
             position += len(samples) / sample_rate
+            spoke_something = True
+
+        if not spoke_something:
+            continue
 
         # The sentence's own span excludes the silence that follows it, so
         # highlighting clears as the voice stops rather than lingering.
@@ -262,6 +289,23 @@ def to_m4a(wav: Path) -> Path | None:
         return None  # keep the wav
 
 
+def estimate(chapter: dict, profile: dict) -> tuple[int, float]:
+    """Sentences and rough minutes of audio, before committing to a render."""
+    words = 0
+    sentences = 0
+    for block in chapter.get("blocks", []):
+        for sentence in block.get("sentences", []):
+            sentences += 1
+            words += len(sentence["text"].split())
+
+    # af_heart reads about 183 wpm at speed 1.0; scale by what the speed
+    # setting actually delivers, then add the silence we insert.
+    wpm = 183 * effective_speed(float(profile.get("speed", 1.0)))
+    pauses = profile.get("pauses", {})
+    silence = sentences * float(pauses.get("sentence", 0.3)) / 60
+    return sentences, words / wpm + silence
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--book", required=True, help="library slug")
@@ -270,6 +314,9 @@ def main() -> None:
     parser.add_argument("--voice", help="override the profile's voice")
     parser.add_argument("--speed", type=float, help="override the profile's speed")
     parser.add_argument("--preview", action="store_true", help="first 6 sentences of one chapter, for tuning")
+    parser.add_argument("--list", action="store_true", help="show chapters and estimated cost, render nothing")
+    parser.add_argument("--include-reference", action="store_true",
+                        help="also render indexes, footnotes and other reference matter")
     parser.add_argument("--wav", action="store_true", help="keep lossless wav instead of m4a")
     args = parser.parse_args()
 
@@ -286,6 +333,36 @@ def main() -> None:
         profile["speed"] = args.speed
 
     chapters = book["chapters"]
+
+    # An index is thousands of fragments and hours of synthesis producing
+    # something nobody would listen to. Skipped unless explicitly asked for.
+    skip_patterns = [] if args.include_reference else (
+        profile.get("skipTitles") or DEFAULT_SKIP_TITLES
+    )
+    skipped_titles = [c.get("title") for c in chapters if should_skip(c.get("title") or "", skip_patterns)]
+    chapters = [c for c in chapters if not should_skip(c.get("title") or "", skip_patterns)]
+
+    if args.list:
+        print(f"{book.get('title', args.book)}")
+        print(f"  speed {profile.get('speed', 1.0)} (~{effective_speed(float(profile.get('speed', 1.0))):.2f}x actual)\n")
+        print(f"  {'#':>3}  {'chapter':44} {'sentences':>9} {'audio':>9} {'render':>9}")
+        total_audio = 0.0
+        for chapter in book["chapters"]:
+            sentences, minutes = estimate(chapter, profile)
+            title = (chapter.get("title") or f"Chapter {chapter['index']}")[:42]
+            note = ""
+            if chapter.get("frontMatter") and profile.get("skipFrontMatter", True):
+                note = "  (front matter, skipped)"
+            elif should_skip(chapter.get("title") or "", skip_patterns):
+                note = "  (reference, skipped)"
+            else:
+                total_audio += minutes
+            print(f"  {chapter['index']:>3}  {title:44} {sentences:>9} "
+                  f"{minutes:>7.1f}m {minutes / 4.5:>7.1f}m{note}")
+        print(f"\n  to render: {total_audio / 60:.1f}h of audio, "
+              f"roughly {total_audio / 4.5 / 60:.1f}h of compute")
+        return
+
     if args.chapters:
         lo, _, hi = args.chapters.partition("-")
         lo = int(lo)
@@ -319,7 +396,10 @@ def main() -> None:
     actual = effective_speed(float(profile.get("speed", 1.0)))
     print(f"  voice {voice_label} · speed {profile.get('speed', 1.0)} "
           f"(~{actual:.2f}x actual) · profile {args.profile}")
-    print(f"  {len(chapters)} chapter(s) → {out_dir}\n")
+    print(f"  {len(chapters)} chapter(s) → {out_dir}")
+    if skipped_titles:
+        print(f"  skipping reference matter: {', '.join(t or '?' for t in skipped_titles)}")
+    print()
 
     requested_speed = float(profile.get("speed", 1.0))
     manifest = {
@@ -336,13 +416,16 @@ def main() -> None:
     }
 
     grand_audio = grand_time = 0.0
+    failures: list[tuple] = []
 
     for chapter in chapters:
         label = (chapter.get("title") or f"Chapter {chapter['index']}")[:44]
         print(f"  {label:46}", end="", flush=True)
 
         started = time.time()
-        audio, timings, duration = render_chapter(kokoro, chapter, profile, voice, pronounce)
+        audio, timings, duration = render_chapter(
+            kokoro, chapter, profile, voice, pronounce, failures=failures
+        )
         elapsed = time.time() - started
 
         if audio is None:
@@ -376,6 +459,13 @@ def main() -> None:
     print(f"\n  {grand_audio / 60:.1f} min of audio in {grand_time / 60:.1f} min "
           f"({grand_audio / max(grand_time, 0.001):.1f}x realtime)")
     print(f"  {out_dir}/sync.json")
+
+    if failures:
+        print(f"\n  {len(failures)} fragment(s) could not be synthesized and were skipped:")
+        for sid, text, err in failures[:8]:
+            print(f"    {sid}  {text!r}  — {err}")
+        if len(failures) > 8:
+            print(f"    … and {len(failures) - 8} more")
 
 
 if __name__ == "__main__":
