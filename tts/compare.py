@@ -29,7 +29,7 @@ import numpy as np
 import soundfile as sf
 
 from render import (
-    LIBRARY, build_kokoro, make_pronouncer, load_profile, resolve_voice, to_m4a,
+    LIBRARY, build_kokoro, compress, make_pronouncer, load_profile, resolve_voice,
 )
 
 ROOT = Path(__file__).resolve().parent
@@ -137,7 +137,7 @@ def main() -> None:
 
     combined = out_dir / "comparison.wav"
     sf.write(combined, np.concatenate(pieces), sample_rate)
-    final = to_m4a(combined) or combined
+    final = compress(combined)
 
     (out_dir / "index.json").write_text(json.dumps({
         "passage": passage, "profile": args.profile, "variants": index,

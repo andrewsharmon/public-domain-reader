@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -275,18 +276,69 @@ def render_chapter(kokoro, chapter, profile, voice, pronounce, sample_rate=24000
     return np.concatenate(pieces), timings, position
 
 
+def compress(wav: Path) -> Path:
+    """Compress a rendered WAV with whatever encoder this machine already has.
+
+    AAC through afconvert where macOS provides it, otherwise MP3 through the
+    libsndfile that soundfile's wheels bundle on Windows, macOS and Linux.
+    Nothing here downloads or includes an encoder of its own. If neither
+    works the WAV is kept: large, but still a render.
+    """
+    for encode in (to_m4a, to_mp3):
+        out = encode(wav)
+        if out:
+            wav.unlink()
+            return out
+    return wav
+
+
+def encoder_label() -> str:
+    return "AAC via afconvert" if shutil.which("afconvert") else "MP3 via libsndfile"
+
+
 def to_m4a(wav: Path) -> Path | None:
-    """Compress with afconvert, which ships with macOS -- no ffmpeg needed."""
+    """AAC with afconvert, which ships with macOS -- no ffmpeg needed."""
+    if not shutil.which("afconvert"):
+        return None
     m4a = wav.with_suffix(".m4a")
     try:
         subprocess.run(
             ["afconvert", "-f", "m4af", "-d", "aac", "-b", "64000", str(wav), str(m4a)],
             check=True, capture_output=True,
         )
-        wav.unlink()
         return m4a
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return None  # keep the wav
+    except subprocess.CalledProcessError:
+        m4a.unlink(missing_ok=True)
+        return None
+
+
+# MP3 at a constant 64 kbps, the AAC path's rate. Constant matters: a browser
+# seeks a constant-rate file by arithmetic, so tapping a sentence lands where
+# the sync map says, where a variable-rate file can land seconds off.
+#
+# libsndfile chooses the bitrate from a 0-1 compression level; at 24 kHz, 0.6
+# measures 64 kbps. It also writes the LAME header recording the encoder's
+# delay, so the decoded audio starts exactly where the WAV did -- a burst at
+# 2.000 s decodes at 2.000 s -- and the timings measured before encoding hold.
+MP3_LEVEL = 0.6
+
+
+def to_mp3(wav: Path) -> Path | None:
+    mp3 = wav.with_suffix(".mp3")
+    try:
+        # Streamed in blocks: a long chapter is hours of audio, and holding a
+        # second copy of it in memory is not free.
+        with sf.SoundFile(wav) as src, sf.SoundFile(
+            mp3, "w", src.samplerate, src.channels, format="MP3", subtype="MPEG_LAYER_III",
+            compression_level=MP3_LEVEL, bitrate_mode="CONSTANT",
+        ) as out:
+            for block in src.blocks(blocksize=1 << 16, dtype="float32"):
+                out.write(block)
+        return mp3
+    except (RuntimeError, TypeError, ValueError):
+        # An older soundfile, or a libsndfile built without MP3.
+        mp3.unlink(missing_ok=True)
+        return None
 
 
 def still_matches(rendered_fingerprint: str | None, chapter: dict) -> bool:
@@ -327,7 +379,7 @@ def main() -> None:
     parser.add_argument("--list", action="store_true", help="show chapters and estimated cost, render nothing")
     parser.add_argument("--include-reference", action="store_true",
                         help="also render indexes, footnotes and other reference matter")
-    parser.add_argument("--wav", action="store_true", help="keep lossless wav instead of m4a")
+    parser.add_argument("--wav", action="store_true", help="keep lossless wav instead of compressing")
     args = parser.parse_args()
 
     book_dir = LIBRARY / args.book
@@ -422,7 +474,7 @@ def main() -> None:
     actual = effective_speed(float(profile.get("speed", 1.0)))
     print(f"  voice {voice_label} · speed {profile.get('speed', 1.0)} "
           f"(~{actual:.2f}x actual) · profile {args.profile}")
-    print(f"  {len(chapters)} chapter(s) → {out_dir}")
+    print(f"  {len(chapters)} chapter(s) → {out_dir}  ({'WAV' if args.wav else encoder_label()})")
     if skipped_titles:
         print(f"  skipping reference matter: {', '.join(t or '?' for t in skipped_titles)}")
     print()
@@ -473,7 +525,7 @@ def main() -> None:
 
         wav = out_dir / f"chapter-{chapter['index']:03d}.wav"
         sf.write(wav, audio, manifest["sampleRate"])
-        final = (None if args.wav else to_m4a(wav)) or wav
+        final = wav if args.wav else compress(wav)
 
         grand_audio += duration
         grand_time += elapsed

@@ -6,7 +6,8 @@ it live on the phone.
 ## Setup
 
 Needs [uv](https://docs.astral.sh/uv/). Nothing here touches the system Python
-or requires Homebrew.
+or requires Homebrew. Written to run on Linux and Windows as well as macOS,
+but so far only run on macOS.
 
 ```
 cd tts
@@ -44,6 +45,13 @@ two and a half hours in.
 
 Output lands in `library/<slug>/audio/<profile>/`: one file per chapter, plus
 `sync.json`.
+
+Chapters are compressed with whatever encoder the machine already has: AAC
+through `afconvert` on macOS, otherwise MP3 through the libsndfile bundled in
+soundfile's wheels on Windows, macOS and Linux. Both run at 64 kbps; the MP3 is
+constant-rate, so seeking to a tapped sentence lands where the sync map says,
+and carries the header that records the encoder's delay, so its timings match
+the WAV's exactly. `--wav` keeps the uncompressed file instead.
 
 `sync.json` records each chapter's fingerprint from `book.json`. If the
 chapters are corrected in the reader afterwards, every chapter from the

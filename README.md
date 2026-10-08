@@ -128,8 +128,8 @@ Two outputs from one render:
 
 1. `book.m4b` with chapter markers — drops into Apple Books and plays natively
    on the iPhone, offline, no app and no Mac required.
-2. `book.m4a` + `book.sync.json` — our own player, with sentence highlighting
-   and read-along.
+2. One audio file per chapter + `sync.json` — our own player, with sentence
+   highlighting and read-along.
 
 ### Engine
 
@@ -289,8 +289,11 @@ repository, which contains none of it, but a packaged build that bundled the
 Python environment -- an installer, an app -- would carry those terms, so check
 before distributing one.
 
-Audio encoders are deliberately not bundled either. `afconvert` ships with
-macOS; nothing here downloads or includes an encoder of its own.
+Audio encoders are deliberately not bundled either. Renders are AAC through
+`afconvert`, which ships with macOS, and MP3 everywhere else, through the
+libsndfile already inside soundfile's wheels -- whose MP3 encoder is LAME,
+also LGPL. Nothing here downloads or includes an encoder of its own, and
+ffmpeg is avoided on purpose.
 
 ## Tests
 
@@ -312,7 +315,7 @@ All three prongs work end to end:
 Not built yet:
 
 - The single `book.m4b` with chapter markers described under *Speech*.
-  Renders are one `.m4a` per chapter, which only the reader plays.
+  Renders are one file per chapter, which only the reader plays.
 - Starting a render from the app. It is `tts/render.py` on the command line.
 - Roman numerals and phoneme-level overrides. Profiles rewrite abbreviations
   as text, and nothing yet decides how `Chapter XIV` or `Henry VIII` is said.
