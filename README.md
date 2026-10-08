@@ -32,9 +32,10 @@ always same-origin. It binds `0.0.0.0` and prints a LAN URL for the iPhone.
 Search, then press **Save**. The book is downloaded, parsed, and written to
 `library/<author>-<title>-<source><id>/`:
 
-    book.txt    the prose, with boilerplate and OCR debris stripped
-    book.json   the parsed structure, including stable sentence ids
-    meta.json   title, author, source, stats, and how chapters were detected
+    book.txt          the prose, with boilerplate and OCR debris stripped
+    book.json         the parsed structure, including stable sentence ids
+    meta.json         title, author, source, stats, and how chapters were detected
+    corrections.json  only if you corrected the chapters; see below
 
 Saving happens on the server because the server is the Mac. The point is real
 files on disk that an offline TTS render -- or anything else -- can read, not
@@ -194,9 +195,30 @@ The Yellow Wallpaper exact; Moby-Dick finds 132 of 136; Sherlock Holmes finds
 Scandal in Bohemia*); Dubliners finds 18 where 15 are wanted (it also catches
 newspaper headlines quoted inside the stories).
 
-Because of this the Book carries `detectedBy`, naming the winning pattern, so
-the reader can show what it did and offer a manual override instead of
-pretending to certainty.
+### Correcting chapters
+
+Since detection cannot be perfect, the reader can correct it. The **§** button
+lists the chapters as detected, with their lengths -- a false one usually
+stands out as a sliver -- and each can be struck out with *Not a chapter*,
+which folds it into the chapter before it. Its heading stays in the text, because it was text all along: a headline
+the character is reading, a numbered section inside a story. *Mark missed
+chapters* does the opposite: tap a line in the text and it becomes a chapter
+title. Detection can also be forced to one pattern, or to none.
+
+Corrections live in `corrections.json`, and the server applies them inside the
+pipeline and rewrites `book.json`, so the reader and the speech renderer see
+one structure. They name a line by its opening words and which occurrence of
+those words it is, not by position, so they survive `npm run reparse` and
+improvements to cleaning. One that stops matching any line is reported, not
+silently dropped. With them, all three books above come out right.
+
+**Correct a book before rendering it.** Sentence ids carry the chapter number,
+so a correction renumbers every chapter after it. Each chapter in `book.json`
+carries a fingerprint of exactly what the renderer reads, every render records
+the fingerprint it was made from, and a chapter whose fingerprint has changed
+reads as stale: the reader will not play it against text it no longer
+matches, and `render.py --list` shows it as changed. Undoing the correction
+makes the same audio current again -- nothing is deleted.
 
 ## Listening while reading
 
@@ -272,8 +294,9 @@ macOS; nothing here downloads or includes an encoder of its own.
 
 ## Tests
 
-    node tests/pipeline.js    structure, against a corpus of awkward books
-    node tests/search.js      ranking regressions
+    node tests/pipeline.js       structure, against a corpus of awkward books
+    node tests/corrections.js    chapter corrections, on the books detection gets wrong
+    node tests/search.js         ranking regressions
 
 ## Status
 

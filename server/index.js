@@ -225,6 +225,27 @@ async function handleSave(req, res) {
   }
 }
 
+// Correct a saved book's chapters and rebuild it. The reader then reloads
+// book.json, and any audio rendered from a chapter that changed reads as
+// stale rather than playing against the wrong text.
+async function handleChapters(url, req, res) {
+  if (req.method !== 'POST') return json(res, 405, { error: 'POST a correction' });
+  let edit;
+  try {
+    edit = await readBody(req);
+  } catch (err) {
+    return json(res, 400, { error: err.message });
+  }
+
+  try {
+    const saved = await library.correctChapters(url.searchParams.get('book'), edit, loadText);
+    json(res, 200, { ok: true, stats: saved.stats, detectedBy: saved.detectedBy });
+  } catch (err) {
+    if (err.status) return json(res, err.status, { error: err.message });
+    sendFetchError(res, err);
+  }
+}
+
 // Byte-range support, which audio needs and ordinary page assets do not.
 //
 // Without it a browser cannot seek: asking for a position it has not buffered
@@ -323,9 +344,10 @@ const server = createServer(async (req, res) => {
       if (!slug) return json(res, 400, { error: 'missing ?book=' });
       return json(res, 200, await library.renders(slug));
     }
+    if (url.pathname === '/api/chapters') return await handleChapters(url, req, res);
     await serveStatic(url.pathname, res, req);
   } catch (err) {
-    json(res, 500, { error: err.message });
+    json(res, err.status ?? 500, { error: err.message });
   }
 });
 

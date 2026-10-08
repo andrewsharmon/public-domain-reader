@@ -5,13 +5,14 @@
 // phone for no benefit -- nobody reads two chapters at once.
 //
 // Every sentence is rendered as its own span carrying the id the pipeline
-// assigned it. Nothing uses that yet; it is what the speech engine will
-// highlight against, and retrofitting it later would mean re-rendering the
-// whole book.
+// assigned it, which is what the player highlights against and what a tap
+// seeks to.
 
 import { el } from '../core/dom.js';
+import { MAX_HEADING_CHARS } from '../core/pipeline/chapters.js';
 import { loadSettings, saveSettings, applySettings, settingsPanel } from './settings.js';
 import { createPlayer, playerBar } from './player.js';
+import { correctionsPanel } from './corrections.js';
 
 const progressKey = (slug) => `pdr:progress:${slug}`;
 
@@ -32,12 +33,39 @@ export async function mount(root, slug) {
   const settings = loadSettings();
   applySettings(settings);
 
-  state = { slug, book, settings, chapter: restoreChapter(slug, book) };
+  state = { slug, book, settings, chapter: restoreChapter(slug, book), marking: false, busy: false, error: null };
 
   const article = el('article', { className: 'prose' });
   const title = el('span', { className: 'chapter-title' });
 
-  const picker = chapterPicker(book, (i) => go(i));
+  const picker = el('select', {
+    className: 'chapters',
+    title: 'Chapters',
+    onchange: (e) => go(Number(e.target.value)),
+  });
+  fillPicker(picker, book);
+
+  const panel = settingsPanel(state.settings, (next) => {
+    state.settings = next;
+    applySettings(next);
+    saveSettings(next);
+  });
+
+  const corrections = correctionsPanel({
+    onCorrect: correct,
+    onGo: (i) => go(i),
+    onMarking: (on) => {
+      // Marking happens in the text, which the panel would be covering.
+      corrections.element.classList.remove('open');
+      setMarking(on);
+    },
+  });
+
+  // One panel at a time: both sit in the same place under the bar.
+  const toggle = (open) => {
+    for (const p of [panel, corrections.element]) p.classList.toggle('open', p === open && !p.classList.contains('open'));
+    if (corrections.element.classList.contains('open')) renderCorrections();
+  };
 
   const bar = el('div', { className: 'bar' }, [
     el('a', { className: 'icon', href: '#/library', textContent: '‹ Library', title: 'Back to library' }),
@@ -46,18 +74,18 @@ export async function mount(root, slug) {
       picker,
       el('button', {
         className: 'icon',
+        textContent: '§',
+        title: 'Chapters — correct how this book was divided',
+        onclick: () => toggle(corrections.element),
+      }),
+      el('button', {
+        className: 'icon',
         textContent: 'Aa',
         title: 'Reading settings',
-        onclick: () => panel.classList.toggle('open'),
+        onclick: () => toggle(panel),
       }),
     ]),
   ]);
-
-  const panel = settingsPanel(state.settings, (next) => {
-    state.settings = next;
-    applySettings(next);
-    saveSettings(next);
-  });
 
   const nav = el('div', { className: 'chapter-nav' }, [
     el('button', { textContent: '← Previous', onclick: () => go(state.chapter - 1) }),
@@ -78,13 +106,15 @@ export async function mount(root, slug) {
 
   // Tapping a sentence starts the voice there -- the most useful way to move
   // around a recording, and only possible because the sync map is exact.
+  // While marking chapters, a tap picks a line instead.
   article.addEventListener('click', (event) => {
+    if (state.marking) return offerMark(event.target.closest?.('[data-block]'));
     const span = event.target.closest?.('.sentence');
     if (span) state.player.seekToSentence(span.dataset.sid);
   });
 
-  root.append(bar, panel, transport.element, article, nav);
-  state.el = { article, title, nav, picker, transport };
+  root.append(bar, panel, corrections.element, transport.element, article, nav);
+  state.el = { article, title, nav, picker, transport, corrections };
 
   go(state.chapter, { restoreScroll: true });
   addEventListener('keydown', onKey);
@@ -109,9 +139,11 @@ function renderPlayerStatus(status) {
   transport.setEnabled(Boolean(status.available));
 
   if (!status.available) {
-    transport.status.textContent = state?.player?.render
-      ? 'this chapter has not been rendered'
-      : 'no audio yet — render it with tts/render.py';
+    transport.status.textContent = status.stale
+      ? 'this chapter changed after it was rendered — render it again'
+      : state?.player?.render
+        ? 'this chapter has not been rendered'
+        : 'no audio yet — render it with tts/render.py';
     return;
   }
 
@@ -124,7 +156,7 @@ function renderPlayerStatus(status) {
 
 // ------------------------------------------------------------------ rendering
 
-function go(index, { restoreScroll = false } = {}) {
+function go(index, { restoreScroll = false, keepScroll = false } = {}) {
   const { book, el: nodes } = state;
   const clamped = Math.max(0, Math.min(index, book.chapters.length - 1));
   state.chapter = clamped;
@@ -133,14 +165,26 @@ function go(index, { restoreScroll = false } = {}) {
   nodes.title.textContent = chapter.title ?? book.title ?? '';
 
   // A run of separator rows is one scene break, so only the first is drawn.
-  const blocks = chapter.blocks.filter(
-    (block, i) => block.type !== 'break' || chapter.blocks[i - 1]?.type !== 'break',
-  );
+  // Filtered after numbering, because marking a line names it by its index.
+  const blocks = chapter.blocks
+    .map((block, b) => renderBlock(block, b))
+    .filter((_, i) => chapter.blocks[i].type !== 'break' || chapter.blocks[i - 1]?.type !== 'break');
 
-  nodes.article.replaceChildren(
-    ...(chapter.title ? [el('h1', { textContent: chapter.title })] : []),
-    ...blocks.map(renderBlock),
-  );
+  const heading = chapter.title ? el('h1', { textContent: chapter.title }) : null;
+  if (heading && state.marking && chapter.heading) {
+    heading.append(markButton('Not a chapter', 'Fold this into the chapter before it', () =>
+      correct({ ref: chapter.heading, startsChapter: false }, { anchor: chapter.firstBlock - 1 })));
+  }
+
+  const hint = state.marking
+    ? [el('p', { className: 'marking-hint' }, [
+      el('span', { textContent: 'Tap the line that should start a chapter.' }),
+      el('button', { type: 'button', textContent: 'Done', onclick: () => setMarking(false) }),
+    ])]
+    : [];
+
+  nodes.article.classList.toggle('marking', state.marking);
+  nodes.article.replaceChildren(...hint, ...(heading ? [heading] : []), ...blocks);
 
   // Keep the picker in step when navigation came from the arrows or keyboard.
   nodes.picker.value = String(clamped);
@@ -149,18 +193,21 @@ function go(index, { restoreScroll = false } = {}) {
   prev.disabled = clamped === 0;
   next.disabled = clamped === book.chapters.length - 1;
 
-  const saved = restoreScroll ? readProgress(state.slug)?.scroll ?? 0 : 0;
-  scrollTo({ top: saved, behavior: 'instant' });
+  if (!keepScroll) {
+    const saved = restoreScroll ? readProgress(state.slug)?.scroll ?? 0 : 0;
+    scrollTo({ top: saved, behavior: 'instant' });
+  }
   writeProgress();
+  renderCorrections();
 
   if (state.player?.render) bindAudio();
 }
 
-function renderBlock(block) {
+function renderBlock(block, b) {
   // A scene break is drawn, not typeset.
-  if (block.type === 'break') return el('hr', { className: 'scene-break' });
+  if (block.type === 'break') return el('hr', { className: 'scene-break', dataset: { block: String(b) } });
 
-  const node = el('p', { className: block.type === 'verse' ? 'verse' : 'para' });
+  const node = el('p', { className: block.type === 'verse' ? 'verse' : 'para', dataset: { block: String(b) } });
 
   block.sentences.forEach((sentence, i) => {
     node.append(
@@ -179,16 +226,131 @@ function renderBlock(block) {
   return node;
 }
 
-function chapterPicker(book, onPick) {
-  const select = el('select', {
-    className: 'chapters',
-    title: 'Chapters',
-    onchange: (e) => onPick(Number(e.target.value)),
+function setMarking(on) {
+  state.marking = on;
+  go(state.chapter, { keepScroll: true });
+}
+
+// A tapped line gets one button, rather than every candidate getting its own:
+// in dialogue-heavy prose nearly every line is short enough to be a title.
+function offerMark(node) {
+  state.el.article.querySelector('.mark.offer')?.remove();
+  const b = Number(node?.dataset.block);
+  const chapter = state.book.chapters[state.chapter];
+  const block = chapter.blocks[b];
+  if (!block?.sentences.length) return;
+
+  // Only a short line can be marked, because it becomes the chapter's title
+  // and leaves the text.
+  const short = block.sentences.map((s) => s.text).join(' ').length <= MAX_HEADING_CHARS;
+  const button = short
+    ? markButton('Start a chapter here', 'Make this line the title of a new chapter', () => correct(
+      { chapter: state.chapter, block: b, text: block.sentences[0].text, startsChapter: true },
+      { anchor: chapter.firstBlock + b },
+    ))
+    : el('span', { className: 'mark', textContent: 'Too long to be a title' });
+  button.classList.add('offer');
+  node.append(button);
+}
+
+function markButton(label, title, onclick) {
+  return el('button', {
+    type: 'button',
+    className: 'mark',
+    textContent: label,
+    title,
+    disabled: state.busy,
+    onclick: (event) => {
+      event.stopPropagation(); // not a tap on the text, which would seek the audio
+      onclick();
+    },
   });
-  book.chapters.forEach((c, i) => {
-    select.append(el('option', { value: String(i), textContent: c.title ?? `Chapter ${i + 1}` }));
+}
+
+function fillPicker(select, book) {
+  select.replaceChildren(...book.chapters.map((c, i) =>
+    el('option', { value: String(i), textContent: c.title ?? `Chapter ${i + 1}` })));
+}
+
+// ---------------------------------------------------------------- corrections
+
+function renderCorrections() {
+  const panel = state?.el?.corrections;
+  if (!panel?.element.classList.contains('open')) return;
+  panel.render({
+    book: state.book,
+    current: state.chapter,
+    marking: state.marking,
+    busy: state.busy,
+    error: state.error,
   });
-  return select;
+}
+
+/**
+ * Send one correction, then reload the rebuilt book.
+ *
+ * Chapter numbers shift under a correction, so where to land afterwards is
+ * named by `anchor`: a block's index in the whole book, which does not move.
+ * By default that is the start of the chapter being read, so striking out a
+ * chapter elsewhere leaves you on the same text.
+ */
+async function correct(edit, { anchor } = {}) {
+  const mine = state;
+  const current = state.book.chapters[state.chapter];
+  // A book saved before corrections existed has no block positions to aim
+  // at; rebuilding it changes nothing, so it stays on the same chapter.
+  const target = anchor ?? ('firstBlock' in current
+    ? (current.heading ? current.firstBlock - 1 : current.firstBlock)
+    : null);
+
+  state.busy = true;
+  state.error = null;
+  renderCorrections();
+
+  let rebuilt = false;
+  try {
+    const res = await fetch(`/api/chapters?book=${encodeURIComponent(state.slug)}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(edit),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error ?? `the correction failed (${res.status})`);
+
+    const reloaded = await fetch(`/books/${encodeURIComponent(state.slug)}/book.json`);
+    if (!reloaded.ok) throw new Error(`could not reload the book (${reloaded.status})`);
+    const book = await reloaded.json();
+    if (state !== mine) return; // the reader was closed meanwhile
+    state.book = book;
+    fillPicker(state.el.picker, state.book);
+    rebuilt = true;
+  } catch (err) {
+    if (state !== mine) return;
+    state.error = err.message;
+  }
+  state.busy = false;
+
+  if (rebuilt && target !== null) land(target);
+  else go(state.chapter, { keepScroll: true });
+  // Renders are checked against the rebuilt chapters, so ask again which
+  // still fit.
+  state.player?.load().then(() => bindAudio());
+}
+
+// Open the chapter that now holds a block, and bring that block into view.
+function land(block) {
+  const chapters = state.book.chapters;
+  const start = (c) => (c.heading ? c.firstBlock - 1 : c.firstBlock ?? 0);
+  let index = 0;
+  chapters.forEach((c, i) => {
+    if (start(c) <= block) index = i;
+  });
+
+  go(index);
+  const local = block - (chapters[index].firstBlock ?? 0);
+  if (local > 0) {
+    state.el.article.querySelector(`[data-block="${local}"]`)?.scrollIntoView({ block: 'center', behavior: 'instant' });
+  }
 }
 
 // ------------------------------------------------------------------- progress

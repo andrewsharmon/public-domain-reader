@@ -23,11 +23,44 @@ const sentenceId = (c, b, s) => `c${c}.b${b}.s${s}`;
 // and nothing to read either, so it is not a sentence.
 const hasSpeakableContent = (text) => /[\p{L}\p{N}]/u.test(text);
 
-export function buildBook(rawText, meta) {
+/** The blocks chapter detection works over, for resolving a block the reader pointed at. */
+export const blocksOf = (rawText, source) => toBlocks(clean(rawText, source));
+
+// 32-bit FNV-1a, which its authors placed in the public domain, plus the
+// length. It runs the same in Node and the browser, where crypto.subtle would
+// make building a Book asynchronous, and it only has to notice change, not
+// resist tampering: a changed chapter that collides by chance is about one in
+// four billion.
+function hash(text) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
+  }
+  return `${(h >>> 0).toString(36)}.${text.length.toString(36)}`;
+}
+
+/**
+ * A hash of exactly what the speech renderer reads from a chapter.
+ *
+ * A render records it per chapter, so audio made from a chapter that has
+ * since changed -- a corrected boundary, a better sentence split -- reads as
+ * stale instead of playing against text it no longer matches. Sentence ids
+ * are part of it, so a chapter whose index shifted is stale too: its timings
+ * are keyed by ids that now belong to a different chapter.
+ */
+export const chapterFingerprint = (chapter) =>
+  hash(JSON.stringify({ frontMatter: chapter.frontMatter, blocks: chapter.blocks }));
+
+/**
+ * @param {string} rawText    Text exactly as the archive served it.
+ * @param {object} meta       Normalized Book metadata from the source adapter.
+ * @param {object} [corrections]  Saved with the book by the reader; see chapters.js.
+ */
+export function buildBook(rawText, meta, corrections = {}) {
   // Chapter detection is heuristic and cannot be right on every book, so the
-  // winning pattern travels with the result -- the reader surfaces it and
-  // offers a manual override rather than pretending to certainty.
-  const { pattern, chapters } = detectChapters(toBlocks(clean(rawText, meta.source)));
+  // winning pattern travels with the result, and the reader can correct it
+  // rather than the pipeline pretending to certainty.
+  const { pattern, unresolved, chapters } = detectChapters(blocksOf(rawText, meta.source), corrections.chapters);
 
   let words = 0;
 
@@ -35,6 +68,9 @@ export function buildBook(rawText, meta) {
     index: chapter.index,
     title: chapter.title,
     frontMatter: chapter.frontMatter,
+    heading: chapter.heading,
+    firstBlock: chapter.firstBlock,
+    ...(chapter.marked ? { marked: true } : {}),
     blocks: chapter.blocks.map((block, b) => {
       // A scene break has no words to say; it survives as a block so the
       // reader can draw it and the speech engine can pause on it.
@@ -59,10 +95,15 @@ export function buildBook(rawText, meta) {
     }),
   }));
 
+  for (const chapter of built) chapter.fingerprint = chapterFingerprint(chapter);
+
   return {
     ...meta,
     chapters: built,
     detectedBy: pattern,
+    // The corrections as applied, including any that no longer match a line
+    // in the text, so the reader can say so instead of silently ignoring them.
+    corrections: corrections.chapters ? { ...corrections.chapters, unresolved } : null,
     stats: {
       chapters: built.filter((c) => !c.frontMatter).length,
       blocks: built.reduce((n, c) => n + c.blocks.length, 0),

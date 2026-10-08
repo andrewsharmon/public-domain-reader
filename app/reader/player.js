@@ -30,11 +30,14 @@ export function createPlayer({ slug, article, onStatus }) {
   /** Bind the audio for one chapter, or report that it hasn't been rendered. */
   function setChapter(index) {
     stop();
-    chapter = render?.chapters.find((c) => c.index === index) ?? null;
+    const rendered = render?.chapters.find((c) => c.index === index) ?? null;
+    // Audio made from a chapter that has since changed would play, but every
+    // timing in it would point at the wrong sentence.
+    chapter = rendered?.stale ? null : rendered;
     timings = [];
 
     if (!chapter) {
-      onStatus?.({ available: false, playing: false });
+      onStatus?.({ available: false, playing: false, stale: Boolean(rendered?.stale) });
       return false;
     }
 

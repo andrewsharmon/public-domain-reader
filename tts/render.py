@@ -289,6 +289,16 @@ def to_m4a(wav: Path) -> Path | None:
         return None  # keep the wav
 
 
+def still_matches(rendered_fingerprint: str | None, chapter: dict) -> bool:
+    """Whether audio rendered with this fingerprint still fits the chapter.
+
+    The same rule the server applies: a render or a book from before
+    fingerprints existed has nothing to compare, so it is trusted.
+    """
+    current = chapter.get("fingerprint")
+    return rendered_fingerprint is None or current is None or rendered_fingerprint == current
+
+
 def estimate(chapter: dict, profile: dict) -> tuple[int, float]:
     """Sentences and rough minutes of audio, before committing to a render."""
     words = 0
@@ -343,6 +353,18 @@ def main() -> None:
     chapters = [c for c in chapters if not should_skip(c.get("title") or "", skip_patterns)]
 
     if args.list:
+        # What is already rendered under this profile, and whether it still
+        # matches the text -- a corrected chapter boundary renumbers every
+        # chapter after it, so those need rendering again.
+        done = {}
+        listed_sync = book_dir / "audio" / args.profile / "sync.json"
+        if listed_sync.exists():
+            try:
+                for rendered in json.loads(listed_sync.read_text()).get("chapters", []):
+                    done[rendered["index"]] = rendered.get("fingerprint")
+            except (json.JSONDecodeError, KeyError):
+                pass
+
         print(f"{book.get('title', args.book)}")
         print(f"  speed {profile.get('speed', 1.0)} (~{effective_speed(float(profile.get('speed', 1.0))):.2f}x actual)\n")
         print(f"  {'#':>3}  {'chapter':44} {'sentences':>9} {'audio':>9} {'render':>9}")
@@ -355,7 +377,11 @@ def main() -> None:
                 note = "  (front matter, skipped)"
             elif should_skip(chapter.get("title") or "", skip_patterns):
                 note = "  (reference, skipped)"
+            elif chapter["index"] in done and still_matches(done[chapter["index"]], chapter):
+                note = "  (rendered)"
             else:
+                if chapter["index"] in done:
+                    note = "  (changed since rendered)"
                 total_audio += minutes
             print(f"  {chapter['index']:>3}  {title:44} {sentences:>9} "
                   f"{minutes:>7.1f}m {minutes / 4.5:>7.1f}m{note}")
@@ -456,6 +482,10 @@ def main() -> None:
         existing[chapter["index"]] = {
             "index": chapter["index"],
             "title": chapter.get("title"),
+            # What the chapter looked like when it was spoken. If its text or
+            # boundaries change later, the server sees the mismatch and the
+            # reader stops playing this file against text it doesn't match.
+            "fingerprint": chapter.get("fingerprint"),
             "file": final.name,
             "duration": round(duration, 2),
             "sentences": timings,

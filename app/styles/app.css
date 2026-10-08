@@ -155,9 +155,6 @@ button:disabled { background: var(--line); color: var(--muted); cursor: default;
 /* Verse line breaks are the author's, so they are preserved exactly. */
 .prose .verse { margin: 1.4em 0 1.4em 1.5em; color: var(--fg); font-style: italic; text-indent: 0; }
 
-/* Present but unused until the speech engine highlights against it. */
-.sentence.speaking { background: color-mix(in srgb, var(--accent) 18%, transparent); border-radius: 3px; }
-
 .chapter-nav {
   display: flex; justify-content: space-between; gap: 12px;
   max-width: var(--reading-measure); margin: 0 auto; padding: 0 20px 60px;
@@ -165,7 +162,8 @@ button:disabled { background: var(--line); color: var(--muted); cursor: default;
 .chapter-nav button { font-size: 0.85rem; }
 
 .panel {
-  position: sticky; top: 45px; z-index: 4;
+  /* Above the player, which sticks at the same height. */
+  position: sticky; top: 45px; z-index: 5;
   display: none; grid-gap: 14px;
   max-width: 30rem; margin: 0 auto; padding: 16px 18px;
   background: var(--card); border: 1px solid var(--line); border-radius: 12px;
@@ -189,6 +187,58 @@ button:disabled { background: var(--line); color: var(--muted); cursor: default;
   .prose { padding: 24px 18px 32px; }
   .chapters { max-width: 6.5rem; }
 }
+
+/* ------------------------------------------------------- chapter corrections */
+
+.corrections {
+  font-family: ui-sans-serif, system-ui, sans-serif; max-height: 75vh; overflow-y: auto;
+  /* Without this the track grows to fit the longest unwrapped title. */
+  grid-template-columns: minmax(0, 1fr);
+}
+.corrections .note, .corrections .error { margin: 0; font-size: 0.78rem; }
+.corrections-summary { margin: 0; font-size: 0.88rem; }
+.corrections select { width: 100%; font-size: 0.85rem; padding: 6px 8px; }
+.error { color: #b4504a; }
+
+.chapter-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.chapter-list li {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 0.8rem;
+}
+.chapter-list li.current .chapter-link { color: var(--accent); font-weight: 600; }
+.chapter-link {
+  flex: 1; min-width: 0; text-align: left; background: none; border: none; padding: 2px 0;
+  color: var(--fg); font-size: inherit; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.chapter-list .words { flex: none; color: var(--muted); font-size: 0.72rem; font-variant-numeric: tabular-nums; }
+.chapter-list .unmark { flex: none; min-width: 6.6rem; padding: 3px 8px; font-size: 0.72rem; }
+.chapter-list span.unmark { visibility: hidden; }
+
+.corrections-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 0.78rem; }
+.corrections-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.corrections-list button { padding: 3px 10px; font-size: 0.72rem; }
+
+.corrections-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.corrections-actions button { padding: 6px 12px; font-size: 0.8rem; }
+.corrections-actions button.active { background: var(--accent); color: var(--bg); border-color: transparent; }
+
+/* Marking mode: a tapped line is offered as a chapter start. Set in the
+   interface face and kept small, so the page still reads as the book. */
+.prose .mark {
+  margin-left: 0.6em; padding: 2px 9px; vertical-align: middle;
+  font: 0.68rem ui-sans-serif, system-ui, sans-serif; font-style: normal; text-indent: 0;
+  color: var(--accent); background: var(--card); border: 1px dashed var(--accent); border-radius: 999px;
+}
+.prose h1 .mark { font-weight: 400; }
+.prose span.mark { border-style: solid; color: var(--muted); border-color: var(--line); }
+.prose.marking [data-block] { cursor: pointer; }
+.prose.marking [data-block]:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.marking-hint {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 0 0 1.6em; padding: 8px 12px; border: 1px dashed var(--accent); border-radius: 8px;
+  font: 0.8rem ui-sans-serif, system-ui, sans-serif; color: var(--accent);
+}
+.marking-hint button { padding: 4px 12px; font-size: 0.78rem; }
 
 /* ------------------------------------------------------------------ player */
 

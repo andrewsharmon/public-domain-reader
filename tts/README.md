@@ -45,6 +45,12 @@ two and a half hours in.
 Output lands in `library/<slug>/audio/<profile>/`: one file per chapter, plus
 `sync.json`.
 
+`sync.json` records each chapter's fingerprint from `book.json`. If the
+chapters are corrected in the reader afterwards, every chapter from the
+correction onwards is renumbered, and its audio reads as stale rather than
+playing against the wrong sentences. `--list` marks each chapter `rendered`
+or `changed since rendered`, and counts only what is left in its total.
+
 ## Choosing a voice
 
 ```

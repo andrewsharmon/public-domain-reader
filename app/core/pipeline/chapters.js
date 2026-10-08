@@ -151,24 +151,116 @@ function headingTitle(blocks, start, end) {
   return lines.join(' — ');
 }
 
-export function detectChapters(blocks) {
+export const PATTERN_NAMES = PATTERNS.map((p) => p.name);
+
+const headingsFor = (blocks, pattern) =>
+  dropEmpty(blocks, mergeAdjacent(blocks, dropTableOfContents(blocks, candidates(blocks, pattern))));
+
+// ---------------------------------------------------------------- corrections
+//
+// Detection is right on most books and close on the rest, and the rest need a
+// person: an all-capitals newspaper headline quoted inside a story is
+// structurally identical to the story's title. So a book can carry
+// corrections -- force a pattern, say a detected heading is not one, or say a
+// line detection missed is -- and they are applied here, inside the pipeline,
+// so that everything downstream (the reader, the sentence ids, a render) sees
+// one structure rather than a raw one and a corrected one.
+
+// A correction has to outlive re-parsing, because the pipeline keeps
+// improving and `npm run reparse` reruns it over every saved book. A block
+// index would be simplest, but any change to cleaning shifts every index
+// after it. A heading's own words do not move, so a block is named by its
+// opening text and which occurrence of that text it is: the third `II.` in a
+// story collection, say.
+const REF_LENGTH = 60;
+const refText = (block) => block.text.replace(/\s+/g, ' ').trim().slice(0, REF_LENGTH);
+
+function blockRefs(blocks) {
+  const seen = new Map();
+  return blocks.map((block) => {
+    const text = refText(block);
+    const nth = seen.get(text) ?? 0;
+    seen.set(text, nth + 1);
+    return { text, nth };
+  });
+}
+
+export const sameRef = (a, b) => a.text === b.text && (a.nth ?? 0) === (b.nth ?? 0);
+
+/** The stable reference for the block at `index`. */
+export const blockRef = (blocks, index) => blockRefs(blocks.slice(0, index + 1))[index];
+
+// A block marked by hand becomes the chapter's title and leaves the text, so
+// only a line short enough to be a title may be marked. Long enough for
+// Moby-Dick's wordiest headings, which run past the 70 characters automatic
+// detection allows.
+export const MAX_HEADING_CHARS = 200;
+
+/**
+ * @param {object[]} blocks
+ * @param {object} [corrections]
+ * @param {string} [corrections.pattern]  force one pattern, or `none` for no chapters
+ * @param {{text: string, nth: number}[]} [corrections.remove]  detected headings that are not chapters
+ * @param {{text: string, nth: number}[]} [corrections.add]     lines that start a chapter detection missed
+ */
+export function detectChapters(blocks, corrections = {}) {
   let best = { headings: [], score: -Infinity, pattern: null };
 
   for (const pattern of PATTERNS) {
-    const headings = dropEmpty(blocks, mergeAdjacent(blocks, dropTableOfContents(blocks, candidates(blocks, pattern))));
+    const headings = headingsFor(blocks, pattern);
     const value = score(blocks, headings);
     if (value > best.score) best = { headings, score: value, pattern: pattern.name };
   }
 
-  const headings = best.score === -Infinity ? [] : best.headings;
+  let pattern = best.score === -Infinity ? null : best.pattern;
+  let headings = pattern ? best.headings : [];
+
+  // A forced pattern is taken as it comes. The score exists to choose between
+  // patterns, and the reader has already chosen.
+  const forced = PATTERNS.find((p) => p.name === corrections.pattern);
+  if (forced) {
+    pattern = forced.name;
+    headings = headingsFor(blocks, forced);
+  } else if (corrections.pattern === 'none') {
+    pattern = null;
+    headings = [];
+  }
+
+  const refs = blockRefs(blocks);
+  const unresolved = [];
+  const locate = (ref) => {
+    const index = refs.findIndex((r) => sameRef(r, ref));
+    if (index === -1) unresolved.push(ref);
+    return index;
+  };
+
+  // A removed heading's block is not discarded: it falls into the chapter
+  // before it as ordinary text, because it was text all along -- a headline
+  // the character is reading, a numbered section inside a story.
+  const removed = new Set((corrections.remove ?? []).map(locate));
+  const added = new Set((corrections.add ?? []).map(locate).filter((i) => i !== -1));
+  headings = [...new Set([...headings.filter((h) => !removed.has(h)), ...added])]
+    .filter((h) => blocks[h].type !== 'break')
+    .sort((a, b) => a - b);
 
   if (!headings.length) {
-    return { pattern: null, chapters: [{ index: 0, title: null, frontMatter: false, blocks }] };
+    return {
+      pattern: null,
+      unresolved,
+      chapters: [{ index: 0, title: null, frontMatter: false, heading: null, firstBlock: 0, blocks }],
+    };
   }
 
   const chapters = [];
   if (headings[0] > 0) {
-    chapters.push({ index: 0, title: 'Front matter', frontMatter: true, blocks: blocks.slice(0, headings[0]) });
+    chapters.push({
+      index: 0,
+      title: 'Front matter',
+      frontMatter: true,
+      heading: null,
+      firstBlock: 0,
+      blocks: blocks.slice(0, headings[0]),
+    });
   }
 
   headings.forEach((start, i) => {
@@ -178,9 +270,15 @@ export function detectChapters(blocks) {
       // Keep the subtitle when the heading block carried one.
       title: headingTitle(blocks, start, end),
       frontMatter: false,
+      // How a correction names this heading, and where the chapter's text
+      // begins in the whole book -- together, enough for the reader to point
+      // at any line and have the server find it again.
+      heading: refs[start],
+      firstBlock: start + 1,
+      ...(added.has(start) ? { marked: true } : {}),
       blocks: blocks.slice(start + 1, end),
     });
   });
 
-  return { pattern: best.pattern, chapters };
+  return { pattern, unresolved, chapters };
 }
