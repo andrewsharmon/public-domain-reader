@@ -246,6 +246,30 @@ MIT -- see [LICENSE](LICENSE). This covers the code in this repository only.
 The books are public domain, and the speech model carries its own licence
 (Kokoro is Apache-2.0).
 
+The repository distributes only its own source. Everything else is fetched by
+whoever runs it -- Node itself, and the Python packages `uv` installs into
+`tts/.venv` -- under that project's own licence:
+
+| Dependency | Licence | Why it is here |
+|---|---|---|
+| Node.js | MIT | the server and pipeline; no npm packages |
+| Kokoro model and voices | Apache-2.0 | the voice |
+| kokoro-onnx | MIT | runs the model |
+| onnxruntime | MIT | via kokoro-onnx |
+| phonemizer | GPL-3.0-or-later | via kokoro-onnx: text to phonemes |
+| espeak-ng, inside espeakng-loader | GPL-3.0-or-later | via kokoro-onnx: phoneme rules |
+| soundfile | BSD-3-Clause | writes audio files |
+| libsndfile, inside soundfile's wheels | LGPL-2.1 | the codecs soundfile uses |
+| numpy | BSD-3-Clause | audio buffers |
+
+The speech side therefore runs GPL-3 code. That is no constraint on this
+repository, which contains none of it, but a packaged build that bundled the
+Python environment -- an installer, an app -- would carry those terms, so check
+before distributing one.
+
+Audio encoders are deliberately not bundled either. `afconvert` ships with
+macOS; nothing here downloads or includes an encoder of its own.
+
 ## Tests
 
     node tests/pipeline.js    structure, against a corpus of awkward books
@@ -253,5 +277,19 @@ The books are public domain, and the speech model carries its own licence
 
 ## Status
 
-Prong 1 works end to end: search, rank, save to disk. The pipeline builds a
-Book from any source. The reader UI and the speech engine are not built yet.
+All three prongs work end to end:
+
+- **Discover** -- search three archives at once, rank across them, save to
+  disk. Gutenberg answers from a local mirror.
+- **Read** -- one chapter at a time, typography settings, and the place you
+  left off, on the Mac or on the iPhone over Wi-Fi.
+- **Listen** -- offline Kokoro renders, one audio file per chapter, played
+  back in the reader with the spoken sentence highlighted.
+
+Not built yet:
+
+- The single `book.m4b` with chapter markers described under *Speech*.
+  Renders are one `.m4a` per chapter, which only the reader plays.
+- Starting a render from the app. It is `tts/render.py` on the command line.
+- Roman numerals and phoneme-level overrides. Profiles rewrite abbreviations
+  as text, and nothing yet decides how `Chapter XIV` or `Henry VIII` is said.
