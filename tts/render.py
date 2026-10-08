@@ -34,6 +34,8 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
+from sections import load_profile, should_skip, skip_patterns_for
+
 ROOT = Path(__file__).resolve().parent
 LIBRARY = ROOT.parent / "library"
 MODEL = ROOT / "models" / "kokoro-v1.0.onnx"
@@ -56,19 +58,6 @@ MAX_CHARS = 400
 # synthesis actually achieved rather than what was asked for.
 SPEED_CURVE = {1.0: 1.00, 1.25: 1.14, 1.5: 1.52, 1.75: 1.63, 2.0: 1.76}
 
-# Sections that are reference material rather than prose. An index is
-# thousands of fragments -- names, commas, page numbers -- which is hours of
-# synthesis producing something nobody would ever listen to.
-DEFAULT_SKIP_TITLES = [
-    r"^\s*INDEX\b", r"^\s*FOOTNOTES?\b", r"^\s*BIBLIOGRAPHY\b",
-    r"^\s*CONTENTS\b", r"TRANSCRIBER'?S NOTE", r"PRINTER TO THE UNIVERSITY",
-]
-
-
-def should_skip(title: str, patterns: list[str]) -> bool:
-    return bool(title) and any(re.search(p, title, re.I) for p in patterns)
-
-
 def effective_speed(requested: float) -> float:
     """What `requested` actually delivers, interpolating between measurements."""
     points = sorted(SPEED_CURVE.items())
@@ -80,16 +69,6 @@ def effective_speed(requested: float) -> float:
         if x0 <= requested <= x1:
             return y0 + (y1 - y0) * (requested - x0) / (x1 - x0)
     return requested
-
-
-def load_profile(name: str) -> dict:
-    path = ROOT / "profiles" / f"{name}.json"
-    if not path.exists():
-        sys.exit(f"No such profile: {path}")
-    profile = json.loads(path.read_text())
-    # Keys beginning with an underscore are documentation for whoever edits
-    # the profile by hand, not settings.
-    return {k: v for k, v in profile.items() if not k.startswith("_")}
 
 
 def build_kokoro():
@@ -398,9 +377,7 @@ def main() -> None:
 
     # An index is thousands of fragments and hours of synthesis producing
     # something nobody would listen to. Skipped unless explicitly asked for.
-    skip_patterns = [] if args.include_reference else (
-        profile.get("skipTitles") or DEFAULT_SKIP_TITLES
-    )
+    skip_patterns = skip_patterns_for(profile, args.include_reference)
     skipped_titles = [c.get("title") for c in chapters if should_skip(c.get("title") or "", skip_patterns)]
     chapters = [c for c in chapters if not should_skip(c.get("title") or "", skip_patterns)]
 

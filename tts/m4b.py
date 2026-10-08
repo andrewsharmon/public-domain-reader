@@ -31,6 +31,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from sections import load_profile, should_skip, skip_patterns_for
+
 ROOT = Path(__file__).resolve().parent
 LIBRARY = ROOT.parent / "library"
 
@@ -563,13 +565,26 @@ def main() -> None:
     out = args.out or render_dir / "book.m4b"
     starts = write_m4b(chapters, out, title, artist)
 
-    missing = [c for i, c in current.items() if i not in {r["index"] for r in rendered} and not c.get("frontMatter")]
+    # What is left out, and why: render.py skips front and reference matter on
+    # purpose, which is not the same as a chapter nobody has rendered yet. A
+    # preview render has no profile file of its own, so defaults apply.
+    profile = load_profile(args.profile, required=False)
+    patterns = skip_patterns_for(profile)
+    done = {r["index"] for r in rendered}
+    left_out = [c for i, c in current.items() if i not in done
+                and not (c.get("frontMatter") and profile.get("skipFrontMatter", True))]
+    reference = [c for c in left_out if should_skip(c.get("title") or "", patterns)]
+    unrendered = [c for c in left_out if c not in reference]
+    name = lambda c: c.get("title") or f"Chapter {c['index']}"  # noqa: E731
+
     print(f"{title}{f' — {artist}' if artist else ''}")
     for chapter, start in zip(chapters, starts):
         hours, rest = divmod(int(start), 3600)
         print(f"  {hours:d}:{rest // 60:02d}:{rest % 60:02d}  {chapter.title}")
-    if missing:
-        print(f"\n  not rendered, so not included: {', '.join(c.get('title') or str(c['index']) for c in missing)}")
+    if reference:
+        print(f"\n  reference matter, skipped as render.py does: {', '.join(map(name, reference))}")
+    if unrendered:
+        print(f"\n  not rendered yet, so not included: {', '.join(map(name, unrendered))}")
     print(f"\n  {out}  ({out.stat().st_size / 1e6:.1f} MB)")
 
 
