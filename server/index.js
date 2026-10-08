@@ -43,6 +43,7 @@ const MIME = {
   '.jpg': 'image/jpeg',
   '.woff2': 'font/woff2',
   '.m4a': 'audio/mp4',
+  '.m4b': 'audio/mp4',
   '.mp3': 'audio/mpeg',
   '.wav': 'audio/wav',
   '.txt': 'text/plain; charset=utf-8',
@@ -284,7 +285,7 @@ async function serveRange(req, res, file, size, type) {
   createReadStream(file, { start, end }).pipe(res);
 }
 
-const RANGED = new Set(['.m4a', '.mp3', '.wav']);
+const RANGED = new Set(['.m4a', '.m4b', '.mp3', '.wav']);
 
 async function serveStatic(pathname, res, req) {
   const rel = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');

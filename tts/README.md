@@ -59,6 +59,30 @@ correction onwards is renumbered, and its audio reads as stale rather than
 playing against the wrong sentences. `--list` marks each chapter `rendered`
 or `changed since rendered`, and counts only what is left in its total.
 
+## An audiobook file
+
+```
+python3 m4b.py --book <slug>
+```
+
+Packages a finished render as `audio/<profile>/book.m4b`: one file, with a
+chapter marker per rendered chapter, that Apple Books imports and plays
+offline -- AirDrop it to the phone, or open it from Files. Nothing is
+re-encoded. The chapter files are already AAC in MP4, so their compressed
+frames are copied into one new file, which takes about a second even for the
+13-hour *Republic*, and the audio is bit-for-bit what the reader plays.
+
+It uses only the Python standard library -- no ffmpeg and no MP4 library --
+so it needs no environment of its own. It refuses a render containing a
+chapter that changed after it was rendered, since that audio would be filed
+under the wrong title, and it lists chapters it leaves out because they were
+never rendered.
+
+It needs AAC chapters, which means rendering on macOS for now: elsewhere
+renders are MP3, and Books does not take MP3 inside an m4b. Checked so far with
+AVFoundation, the framework Books is built on, which reads every chapter title
+and start time back correctly.
+
 ## Choosing a voice
 
 ```

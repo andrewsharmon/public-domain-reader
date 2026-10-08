@@ -127,7 +127,8 @@ phone. That choice buys a lot:
 Two outputs from one render:
 
 1. `book.m4b` with chapter markers — drops into Apple Books and plays natively
-   on the iPhone, offline, no app and no Mac required.
+   on the iPhone, offline, no app and no Mac required. `tts/m4b.py` builds it
+   from a finished render without re-encoding anything.
 2. One audio file per chapter + `sync.json` — our own player, with sentence
    highlighting and read-along.
 
@@ -314,8 +315,9 @@ All three prongs work end to end:
 
 Not built yet:
 
-- The single `book.m4b` with chapter markers described under *Speech*.
-  Renders are one file per chapter, which only the reader plays.
+- An `.m4b` anywhere but macOS. It is packaged from AAC chapters, and only
+  macOS has an AAC encoder this project may use without shipping one;
+  elsewhere renders are MP3, which the reader plays but Books does not.
 - Starting a render from the app. It is `tts/render.py` on the command line.
 - Roman numerals and phoneme-level overrides. Profiles rewrite abbreviations
   as text, and nothing yet decides how `Chapter XIV` or `Henry VIII` is said.
